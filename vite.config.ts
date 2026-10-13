@@ -1,0 +1,4 @@
+import {defineConfig} from 'vite';
+import react from '@vitejs/plugin-react';
+import {VitePWA} from 'vite-plugin-pwa';
+export default defineConfig({base:process.env.PAGES_BUILD ? '/marginalia/' : '/', plugins:[react(), VitePWA({registerType:'prompt',includeAssets:['icon.svg'],manifest:{name:'Marginalia — 思考の余白',short_name:'Marginalia',lang:'ja',start_url:'.',display:'standalone',background_color:'#f8f7f3',theme_color:'#172b28',icons:[{src:'icon.svg',sizes:'any',type:'image/svg+xml',purpose:'any'}]},workbox:{maximumFileSizeToCacheInBytes:8000000,globPatterns:['**/*.{js,css,html,svg,woff,woff2}'],navigateFallback:'index.html'}})]});
