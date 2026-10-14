@@ -1,0 +1,31 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>Marginalia editor checks</title></head><body><h1>Editor integration checks</h1><pre id="results">Running…</pre><script type="module">
+import {Editor} from '@tiptap/core';
+import Collaboration from '@tiptap/extension-collaboration';
+import {doc,pages,persistence,createPage,updatePage} from '/src/data.ts';
+import {baseExtensions,cleanHTML,htmlToMarkdown,getPageMarkdown,applyPagePatch} from '/src/editor.tsx';
+const checks=[],created=[];
+const assert=(name,condition)=>{checks.push((condition?'PASS':'FAIL')+' '+name);if(!condition)throw new Error(name);};
+const make=(markdown)=>{const page=createPage();created.push(page.id);const element=document.createElement('div');element.style.display='none';document.body.append(element);const editor=new Editor({element,extensions:[...baseExtensions(),Collaboration.configure({document:doc,fragment:doc.getXmlFragment('page:'+page.id)})]});editor.commands.setContent(cleanHTML(markdown));return{page,editor};};
+try{
+ await persistence.whenSynced;
+ const tex=String.raw`\begin{aligned} A&=\begin{pmatrix}a&b\\c&d\end{pmatrix}\\ \mathbb E[X]&=\int xf(x)\,dx\end{aligned}`;
+ const input='# Title\n\nFirst paragraph\n\nUnrelated paragraph\n\n$$\n'+tex+'\n$$\n\n| Name | Value |\n| --- | --- |\n| A | B |\n\n~~strike~~ and ==highlight== and $x^2$ and <u>underline</u>.\n\nFootnote[^memo].\n\n[^memo]: Stored footnote.\n\n```typescript\nconst value: number = 42;\n```';
+ const first=make(input);const encoded=htmlToMarkdown(first.editor.getHTML());
+ assert('TeX survives Markdown round trip',encoded.includes(tex)&&encoded.includes('$x^2$'));
+ assert('Table remains editable Markdown',encoded.includes('| Name | Value |')&&!encoded.includes('<table'));
+ assert('Strike, underline and footnote survive',encoded.includes('~~strike~~')&&encoded.includes('<u>underline</u>')&&encoded.includes('[^memo]: Stored footnote.'));
+ const untouched=doc.getXmlFragment('page:'+first.page.id).get(2);
+ applyPagePatch(first.page.id,'First paragraph','Approved paragraph',first.editor);
+ assert('Approved proposal changes only its target',getPageMarkdown(first.page.id).includes('Approved paragraph')&&getPageMarkdown(first.page.id).includes('Unrelated paragraph'));
+ assert('Unrelated block keeps its CRDT identity',doc.getXmlFragment('page:'+first.page.id).get(2)===untouched);
+ assert('Math survives partial approval',getPageMarkdown(first.page.id).includes(tex));
+ const second=make('Other page content');second.editor.destroy();
+ applyPagePatch(second.page.id,'Other page content','Edited other page');
+ assert('Other-page proposal applies without navigating',getPageMarkdown(second.page.id).includes('Edited other page'));
+ let rejected=false;try{applyPagePatch(first.page.id,'Outdated text','Bad overwrite',first.editor);}catch{rejected=true;}
+ assert('Stale proposal is rejected',rejected);
+ const embed=make('![['+first.page.id+']]');
+ assert('Page embed survives Markdown export',htmlToMarkdown(embed.editor.getHTML()).includes('![['+first.page.id+']]'));
+ first.editor.destroy();embed.editor.destroy();
+}catch(error){checks.push('ERROR '+error.message);}finally{for(const id of created)updatePage(id,{deleted:true});document.querySelector('#results').textContent=checks.join('\n');}
+</script></body></html>
