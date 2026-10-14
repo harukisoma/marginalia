@@ -2,10 +2,10 @@
 import {Editor} from '@tiptap/core';
 import Collaboration from '@tiptap/extension-collaboration';
 import {doc,pages,persistence,createPage,updatePage} from '/src/data.ts';
-import {baseExtensions,cleanHTML,htmlToMarkdown,getPageMarkdown,applyPagePatch} from '/src/editor.tsx';
-const checks=[],created=[];
+import {baseExtensions,cleanHTML,htmlToMarkdown,getPageMarkdown,applyPagePatch,createReviewExtension,inlineReviewKey} from '/src/editor.tsx';
+const checks=[],created=[],actions=[];
 const assert=(name,condition)=>{checks.push((condition?'PASS':'FAIL')+' '+name);if(!condition)throw new Error(name);};
-const make=(markdown)=>{const page=createPage();created.push(page.id);const element=document.createElement('div');element.style.display='none';document.body.append(element);const editor=new Editor({element,extensions:[...baseExtensions(),Collaboration.configure({document:doc,fragment:doc.getXmlFragment('page:'+page.id)})]});editor.commands.setContent(cleanHTML(markdown));return{page,editor};};
+const make=(markdown)=>{const page=createPage();created.push(page.id);const element=document.createElement('div');element.style.display='none';document.body.append(element);const editor=new Editor({element,extensions:[...baseExtensions(),createReviewExtension((key,accept)=>actions.push({key,accept})),Collaboration.configure({document:doc,fragment:doc.getXmlFragment('page:'+page.id)})]});editor.commands.setContent(cleanHTML(markdown));return{page,editor};};
 try{
  await persistence.whenSynced;
  const tex=String.raw`\begin{aligned} A&=\begin{pmatrix}a&b\\c&d\end{pmatrix}\\ \mathbb E[X]&=\int xf(x)\,dx\end{aligned}`;
@@ -26,6 +26,29 @@ try{
  assert('Stale proposal is rejected',rejected);
  const embed=make('![['+first.page.id+']]');
  assert('Page embed survives Markdown export',htmlToMarkdown(embed.editor.getHTML()).includes('![['+first.page.id+']]'));
- first.editor.destroy();embed.editor.destroy();
+
+ const reviewBaseline=getPageMarkdown(first.page.id),reviewBytes=Array.from((await import('yjs')).encodeStateAsUpdate(doc));
+ const proposals=[{key:'preview:0',before:'Approved paragraph',after:'**読みやすい変更案**\n\n$$\n'+tex+'\n$$\n\n```python\nvalue = 42\n```',reason:'表示だけの確認'}, {key:'preview:1',before:'Unrelated paragraph',after:'別の変更案',reason:'独立した承認'}];
+ first.editor.view.dispatch(first.editor.state.tr.setMeta(inlineReviewKey,{items:proposals}));
+ assert('Inline review renders at the target blocks',first.editor.view.dom.querySelectorAll('.inline-review').length===2);
+ assert('Rendered review contains MathJax and highlighted code',!!first.editor.view.dom.querySelector('.inline-review svg')&&!!first.editor.view.dom.querySelector('.inline-review code .hljs-number'));
+ assert('Preview never changes saved Markdown or Yjs bytes',getPageMarkdown(first.page.id)===reviewBaseline&&JSON.stringify(Array.from((await import('yjs')).encodeStateAsUpdate(doc)))===JSON.stringify(reviewBytes));
+ first.editor.view.dom.querySelector('.inline-review button').click();
+ assert('Review action identifies the individual proposal',actions.at(-1).key==='preview:0'&&!actions.at(-1).accept);
+ applyPagePatch(first.page.id,'Approved paragraph','Locally updated paragraph',first.editor);
+ assert('Stale inline review disables approval',!!first.editor.view.dom.querySelector('.stale-review button:disabled'));
+ const palette=make('Palette text');palette.editor.chain().selectAll().setColor('var(--text-sage)').setHighlight({color:'#dbe7d5'}).run();
+ const colors=htmlToMarkdown(palette.editor.getHTML());palette.editor.commands.setContent(cleanHTML(colors));
+ assert('Palette text and highlight colors survive Markdown round trip',palette.editor.getHTML().includes('var(--text-sage)')&&palette.editor.getHTML().includes('219, 231, 213')&&!palette.editor.getHTML().includes('data-markdown-extra'));
+ const legacy=(await import('yjs')).Doc;const historical=new legacy();(await import('yjs')).applyUpdate(historical,new Uint8Array((await (await fetch('/test/fixtures/notebook-v1.json')).json()).state));const oldMarkdown=htmlToMarkdown((await import('/src/editor.tsx')).getPageHTML('legacy-paper-v1',true,historical));assert('Frozen v1 backup renders with legacy colors, math and code',oldMarkdown.includes('色付きの考察')&&oldMarkdown.includes('165, 94, 70')&&oldMarkdown.includes('\\begin{pmatrix}')&&oldMarkdown.includes('return x ** 2'));historical.destroy();
+ const styled=make('**bold** and `a*b` and $x^2$');styled.editor.chain().selectAll().setColor('var(--text-blue)').setHighlight({color:'#dbe8ee'}).run();styled.editor.commands.setContent(cleanHTML(htmlToMarkdown(styled.editor.getHTML())));assert('Styled inline code, math and bold retain their meaning',styled.editor.state.doc.textContent.includes('a*b')&&styled.editor.getHTML().includes('data-source="x^2"')&&!!styled.editor.view.dom.querySelector('strong')&&styled.editor.view.dom.querySelector('strong').textContent==='bold');applyPagePatch(styled.page.id,'bold','clear',styled.editor);assert('Partial edits inside colored text remain formatted',styled.editor.view.dom.querySelector('strong')?.textContent==='clear'&&styled.editor.getHTML().includes('var(--text-blue)'));styled.editor.destroy();
+ const {checkpoint,listRecovery,readRecovery,decodeRecovery,recoveryPages,restoreLeafCopy,importBackupForRecovery}=await import('/src/recovery.ts');
+ await checkpoint('Integration safety check');const saved=(await listRecovery())[0];const snapshot=await readRecovery(saved.id);const recovered=decodeRecovery(snapshot);
+ const original=recoveryPages(recovered).find(p=>p.id===palette.page.id);
+ palette.editor.commands.setContent(cleanHTML('Changed after checkpoint'));const restored=await restoreLeafCopy(original,colors);created.push(restored.id);
+ assert('Recovery creates another leaf without overwriting current content',restored.id!==palette.page.id&&getPageMarkdown(palette.page.id).includes('Changed after checkpoint')&&getPageMarkdown(restored.id).includes('Palette text'));
+ const stateBeforeImport=JSON.stringify(Array.from((await import('yjs')).encodeStateAsUpdate(doc)));await importBackupForRecovery(JSON.stringify({format:'marginalia-yjs-v1',state:Array.from(snapshot.state)}));
+ assert('Importing an old backup never rewrites the live workspace',stateBeforeImport===JSON.stringify(Array.from((await import('yjs')).encodeStateAsUpdate(doc))));
+ recovered.destroy();palette.editor.destroy();first.editor.destroy();embed.editor.destroy();
 }catch(error){checks.push('ERROR '+error.message);}finally{for(const id of created)updatePage(id,{deleted:true});document.querySelector('#results').textContent=checks.join('\n');}
 </script></body></html>

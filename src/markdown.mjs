@@ -39,7 +39,7 @@ markdown.block.ruler.before('paragraph','page_embed',(state,start,_end,silent)=>
 });
 markdown.renderer.rules.page_embed=(tokens,i)=>`<div data-page-embed="${escape(tokens[i].content)}">${escape(tokens[i].content)}</div>`;
 markdown.renderer.rules.footnote_ref=(tokens,i)=>`<span data-footnote-source="${escape(tokens[i].meta.label ? '[^'+tokens[i].meta.label+']' : '^['+(tokens[i].content||'')+']')}">[${escape(tokens[i].meta.label||tokens[i].meta.id+1)}]</span>`;
-markdown.renderer.rules.html_block=(tokens,i)=>`<div data-markdown-extra="${escape(tokens[i].content)}">${escape(tokens[i].content)}</div>`;
+markdown.renderer.rules.html_block=(tokens,i)=>{const raw=tokens[i].content.trim();if(/^<(?:span|mark|u|sub|sup|strong|em|s|del)(?=[ >])/i.test(raw))return markdown.render('\u2060'+raw).replace('\u2060','');return `<div data-markdown-extra="${escape(tokens[i].content)}">${escape(tokens[i].content)}</div>`;};
 export function markdownHTML(source){
  const definitions=source.match(/^\[\^[^\]]+\]:[^\n]*(?:\n[ \t]{2,}[^\n]*)*/gm)||[];
  let rendered=markdown.render(source);
