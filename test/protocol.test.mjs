@@ -2,8 +2,16 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import * as Y from 'yjs';
-import {createAttempt,callbackClient,parseAIResult,readResponseStream,applyExactPatch} from '../server/protocol.mjs';
+import {createAttempt,callbackClient,parseAIResult,readResponseStream,applyExactPatch,allowedRequestOrigin} from '../server/protocol.mjs';
 import {markdownHTML} from '../src/markdown.mjs';
+test('opaque loopback setup forms require the connection secret and cannot open other origins or routes',()=>{
+ const secret='test-only-connection-code-'.repeat(2),allowed=new Set(['https://harukisoma.github.io']),request={method:'POST',path:'/connect-cloud',pairing:secret};
+ assert.equal(allowedRequestOrigin('null',allowed,request,secret),true);
+ for(const change of [{pairing:'wrong'},{pairing:undefined},{method:'GET'},{path:'/api/chat'},{path:'/bootstrap'}])assert.equal(allowedRequestOrigin('null',allowed,{...request,...change},secret),false);
+ assert.equal(allowedRequestOrigin('https://unrelated.example',allowed,request,secret),false);
+ assert.equal(allowedRequestOrigin('null',allowed,request,'short'),false);
+ assert.equal(allowedRequestOrigin('https://harukisoma.github.io',allowed,request,secret),true);
+});
 test('OAuth uses PKCE, loopback, fresh state and granted-client registration',()=>{const a=createAttempt('urn:uuid:host',4318);const url=new URL(a.url);assert.equal(url.searchParams.get('redirect_uri'),'http://127.0.0.1:4318/auth/callback');assert.equal(url.searchParams.get('client_id'),'dynamic_agent_client');assert.equal(url.searchParams.get('code_challenge'),createHash('sha256').update(a.verifier).digest('base64url'));assert.notEqual(a.state,createAttempt('urn:uuid:host',4318).state);assert.throws(()=>callbackClient(a,{state:'wrong',code:'c',client_id:'oaiapp_a'}));assert.equal(callbackClient(a,{state:a.state,code:'c',client_id:'oaiapp_a'}),'oaiapp_a');const returning=createAttempt('urn:uuid:host',4318,{client_id:'oaiapp_a'});assert.throws(()=>callbackClient(returning,{state:returning.state,code:'c',client_id:'oaiapp_b'}));});
 test('AI proposals never silently overwrite changed or ambiguous text',()=>{assert.equal(applyExactPatch('before A after','A','B'),'before B after');assert.throws(()=>applyExactPatch('A A','A','B'));assert.throws(()=>applyExactPatch('updated','old','new'));assert.throws(()=>applyExactPatch('abc','','d'));});
 test('AI cannot propose edits to pages not supplied as context',()=>{const output=parseAIResult(JSON.stringify({answer:'ok',references:['yes','private'],edits:[{pageId:'private',before:'secret',after:'x',reason:'x'},{pageId:'yes',before:'a',after:'b',reason:'x'}]}),[{id:'yes'}]);assert.deepEqual(output.references,['yes']);assert.equal(output.edits.length,1);});

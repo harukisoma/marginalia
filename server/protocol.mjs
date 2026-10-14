@@ -1,6 +1,12 @@
 import {createHash,randomBytes} from 'node:crypto';
 export const resource='https://api.openai.com/v1';
 export const scope='openid profile email offline_access resource.invoke chatgpt.tokens.use.direct';
+export function allowedRequestOrigin(origin,allowed,{method,path,pairing},expectedPairing){
+ if(!origin||allowed.has(origin))return true;
+ // Browsers can omit a secure origin on a top-level form POST to HTTP loopback.
+ // This exception authenticates the setup form; it never enables opaque-origin CORS.
+ return origin==='null'&&method==='POST'&&path==='/connect-cloud'&&typeof expectedPairing==='string'&&expectedPairing.length>=32&&pairing===expectedPairing;
+}
 export function createAttempt(hostId,port,profile){
  const verifier=randomBytes(48).toString('base64url'),state=randomBytes(32).toString('base64url'),nonce=randomBytes(32).toString('base64url');
  const redirect=`http://127.0.0.1:${port}/auth/callback`;
