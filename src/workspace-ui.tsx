@@ -15,8 +15,37 @@ export function ActionMenu({label,children,actions,className=''}:{label:string;c
  const[open,setOpen]=useState(false);
  const[position,setPosition]=useState({left:0,top:0});
  function close(){if(element.current)element.current.open=false;}
- useLayoutEffect(()=>{if(!open||!summary.current||!popover.current)return;const anchor=summary.current.getBoundingClientRect(),menu=popover.current.getBoundingClientRect();setPosition({left:Math.max(8,Math.min(anchor.right-menu.width,window.innerWidth-menu.width-8)),top:Math.max(8,Math.min(anchor.bottom+5,window.innerHeight-menu.height-8))});},[open]);
- useEffect(()=>{if(!open)return;const outside=(event:PointerEvent)=>{if(!element.current?.contains(event.target as Node))close();};document.addEventListener('pointerdown',outside);return()=>document.removeEventListener('pointerdown',outside);},[open]);
+ useLayoutEffect(()=>{
+  if(!open)return;
+  function place(){
+   const anchor=summary.current?.getBoundingClientRect(),menu=popover.current?.getBoundingClientRect();
+   if(!anchor||!menu)return;
+   const viewport=window.visualViewport;
+   const left=viewport?.offsetLeft??0,top=viewport?.offsetTop??0;
+   const right=left+(viewport?.width??window.innerWidth),bottom=top+(viewport?.height??window.innerHeight);
+   setPosition({
+    left:Math.max(left+8,Math.min(anchor.right-menu.width,right-menu.width-8)),
+    top:Math.max(top+8,Math.min(anchor.bottom+5,bottom-menu.height-8)),
+   });
+  }
+  place();
+  window.visualViewport?.addEventListener('resize',place);
+  window.addEventListener('resize',place);
+  return()=>{
+   window.visualViewport?.removeEventListener('resize',place);
+   window.removeEventListener('resize',place);
+  };
+ },[open]);
+ useEffect(()=>{
+  if(!open)return;
+  const outside=(event:Event)=>{if(!element.current?.contains(event.target as Node))close();};
+  document.addEventListener('pointerdown',outside);
+  document.addEventListener('scroll',outside,true);
+  return()=>{
+   document.removeEventListener('pointerdown',outside);
+   document.removeEventListener('scroll',outside,true);
+  };
+ },[open]);
  return <details className={'action-menu '+className} ref={element} onToggle={e=>setOpen(e.currentTarget.open)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();close();summary.current?.focus();}}} onBlur={e=>{if(e.relatedTarget&&!e.currentTarget.contains(e.relatedTarget as Node))close();}}>
   <summary ref={summary} aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open}>{children}</summary>
   <div ref={popover} style={position} className="action-popover" role="menu" aria-label={label}>{actions.map(action=><button key={action.label} role="menuitem" className={(action.danger?'danger ':'')+(action.separator?'menu-separator':'')} onClick={()=>{close();action.run();}}>{action.icon}<span>{action.label}{action.description&&<small>{action.description}</small>}</span></button>)}</div>
