@@ -123,3 +123,8 @@
 }
 .save-state{position:relative}
 .save-state i{position:absolute;top:10px;left:23px;width:7px;height:7px;border-radius:50%;background:#b95f4f}
+
+.startup-recovery{margin:36px auto;padding:24px;max-width:680px}
+.startup-recovery button,.journal-recovery button{min-height:44px}
+.journal-recovery{display:flex;justify-content:center;flex-wrap:wrap;gap:8px}
+.journal-recovery button{border:1px solid var(--border);background:var(--paper);color:var(--green)}

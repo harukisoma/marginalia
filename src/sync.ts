@@ -1,6 +1,7 @@
 import {createClient, type SupabaseClient} from '@supabase/supabase-js';
 import * as Y from 'yjs';
 import {doc} from './data';
+import {inspectNotebookUpdate} from './preservation.mjs';
 
 export type SyncConfig={url:string;key:string};
 export type SyncStatus='local'|'offline'|'syncing'|'synced'|'error';
@@ -25,7 +26,7 @@ export class CloudSync{
  private request?:AbortController;
  private flight?:{epoch:number;done:Promise<void>};
 
- constructor(config:SyncConfig,private report:(state:SyncStatus,error?:string)=>void){
+ constructor(config:SyncConfig,private report:(state:SyncStatus,error?:string)=>void,private protect:(reason:string)=>Promise<void>){
   this.client=createClient(config.url,config.key);
  }
 
@@ -73,9 +74,12 @@ export class CloudSync{
    throw new Error('この端末は別のアカウントと同期しています。ログアウトして、Macで使っているアカウントでログインし直してください。');
   }
   if(this.owner===owner)return true;
+  this.email=session.user.email||'';
+  if(!bound)await this.protect('初回同期前');
+  if(this.closed||epoch!==this.epoch)return false;
+  if(this.owner===owner)return true;
   localStorage.setItem('marginalia-sync-owner',owner);
   this.owner=owner;
-  this.email=session.user.email||'';
   doc.on('update',this.update);
   window.addEventListener('online',this.refresh);
   window.addEventListener('offline',this.offline);
@@ -120,8 +124,23 @@ export class CloudSync{
      .setHeader('Authorization',authorization).abortSignal(AbortSignal.any([signal,AbortSignal.timeout(12000)])).maybeSingle();
     if(signal.aborted)return;
     if(error)throw error;
-    if(data?.state)Y.applyUpdate(doc,Uint8Array.from(atob(data.state),c=>c.charCodeAt(0)),'cloud');
-    const encoded=toBase64(Y.encodeStateAsUpdate(doc));
+    const current=Y.encodeStateAsUpdate(doc);
+    const currentEncoded=toBase64(current);
+    let encoded=currentEncoded;
+    if(data?.state&&data.state!==currentEncoded){
+     const incoming=Uint8Array.from(atob(data.state),c=>c.charCodeAt(0));
+     const protection=inspectNotebookUpdate(doc,current,incoming);
+     if(protection==='block'){
+      throw new Error('記録を丸ごと削除する変更を検出したため、同期を停止しました。この端末のリーフはそのままです。');
+     }
+     if(protection==='archive'){
+      await this.protect('同期でリーフや本文が見えなくなる前');
+      if(signal.aborted)return;
+      if(toBase64(Y.encodeStateAsUpdate(doc))!==currentEncoded)continue;
+     }
+     Y.applyUpdate(doc,incoming,'cloud');
+     encoded=toBase64(Y.encodeStateAsUpdate(doc));
+    }
     this.dirty=false;
     if(data?.state===encoded){this.report('synced');return;}
     const saved=await this.client.rpc('save_notebook',{expected_revision:data?.revision??0,new_state:encoded})

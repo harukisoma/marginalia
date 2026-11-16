@@ -10,14 +10,15 @@ import {emailLinkCredentials} from '../src/cloud-auth.mjs';
 const source=ts.transpileModule(readFileSync('src/sync.ts','utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText
  .replace(/import .* from '@supabase\/supabase-js';/, 'const createClient=()=>globalThis.syncFixture.client;')
  .replace(/import \* as Y from 'yjs';/, `import * as Y from '${import.meta.resolve('yjs')}';`)
- .replace(/import \{ doc \} from '.\/data';/, 'const doc=globalThis.syncFixture.doc;');
+ .replace(/import \{ doc \} from '.\/data';/, 'const doc=globalThis.syncFixture.doc;')
+ .replace('./preservation.mjs',import.meta.resolve('../src/preservation.mjs'));
 let counter=0;
 function fixture(server={state:null,revision:0}){
- const doc=new Y.Doc(),states=[];let session={access_token:'synthetic-access',user:{id:'synthetic-owner',email:'synthetic@example.invalid'}},readHook=null,saveHook=null;
+ const doc=new Y.Doc(),states=[];let session={access_token:'synthetic-access',user:{id:'synthetic-owner',email:'synthetic@example.invalid'}},readHook=null,saveHook=null,protectHook=null;
  const events=new EventTarget(),storage=new Map();globalThis.window=events;globalThis.document=Object.assign(new EventTarget(),{visibilityState:'visible'});Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});globalThis.localStorage={getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)};
  const client={auth:{getSession:async()=>({data:{session}}),stopAutoRefresh(){}},channel:()=>({on(){return this;},subscribe(){return this;}}),removeChannel:async()=>{},from:()=>({select(){return this;},eq(){return this;},setHeader(){return this;},abortSignal(){return this;},async maybeSingle(){if(readHook)await readHook();return {data:server.state?{...server}:null};}}),rpc:(_name,args)=>({setHeader(){return this;},abortSignal:async()=>{if(saveHook)await saveHook();if(args.expected_revision!==server.revision)return {error:{code:'40001'}};server.state=args.new_state;server.revision++;return {};}})};
  globalThis.syncFixture={client,doc};
- return {doc,states,storage,server,setSession:value=>session=value,setReadHook:value=>readHook=value,setSaveHook:value=>saveHook=value,async create(){const {CloudSync}=await import('data:text/javascript;base64,'+Buffer.from(source+'\n// '+counter++).toString('base64'));return new CloudSync({url:'',key:''},(state,error)=>states.push({state,error}));}};
+ return {doc,states,storage,server,setSession:value=>session=value,setReadHook:value=>readHook=value,setSaveHook:value=>saveHook=value,setProtectHook:value=>protectHook=value,async create(){const {CloudSync}=await import('data:text/javascript;base64,'+Buffer.from(source+'\n// '+counter++).toString('base64'));return new CloudSync({url:'',key:''},(state,error)=>states.push({state,error}),async reason=>{if(protectHook)await protectHook(reason);});}};
 }
 function deferred(){let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};}
 
@@ -86,5 +87,70 @@ test('sync never writes the notebook under a newly active account',async()=>{
  f.doc.getMap('pages').set('private','stays local');
  await sync.flush();
  assert.equal(f.server.revision,revision);
+ sync.stop();
+});
+
+
+test('the first sync awaits a durable backup of unsynced journal entries',async()=>{
+ const f=fixture(),sync=await f.create(),saved=deferred();
+ const journal={id:'local',title:'端末の日記',kind:'journal'};
+ f.doc.getMap('pages').set(journal.id,journal);
+ f.setProtectHook(reason=>{assert.equal(reason,'初回同期前');return saved.promise;});
+ const starting=sync.start();
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.server.revision,0);
+ assert.equal(f.storage.has('marginalia-sync-owner'),false);
+ saved.resolve();
+ await starting;
+ assert.equal(f.server.revision,1);
+ sync.stop();
+});
+
+test('failed backup prevents the first sync from uploading or mutating records',async()=>{
+ const f=fixture(),sync=await f.create();
+ f.doc.getMap('pages').set('local',{id:'local',kind:'journal'});
+ f.setProtectHook(()=>{throw new Error('storage full');});
+ await assert.rejects(sync.start(),/storage full/);
+ assert.equal(f.server.revision,0);
+ assert.equal(f.doc.getMap('pages').get('local').kind,'journal');
+ sync.stop();
+});
+
+test('an incoming hard deletion cannot reach the notebook or be written back',async()=>{
+ const f=fixture(),sync=await f.create();
+ f.doc.getMap('pages').set('journal',{id:'journal',kind:'journal'});
+ await sync.start();
+ const remote=new Y.Doc();
+ Y.applyUpdate(remote,Buffer.from(f.server.state,'base64'));
+ remote.getMap('pages').delete('journal');
+ f.server.state=Buffer.from(Y.encodeStateAsUpdate(remote)).toString('base64');
+ const revision=++f.server.revision;
+ await sync.flush();
+ assert.equal(f.states.at(-1).state,'error');
+ assert.equal(f.doc.getMap('pages').get('journal').kind,'journal');
+ assert.equal(f.server.revision,revision);
+ remote.destroy();
+ sync.stop();
+});
+
+test('sync waits for archival before applying a recoverable trash operation',async()=>{
+ const f=fixture(),sync=await f.create();
+ const journal=new Y.Map(Object.entries({id:'journal',kind:'journal'}));
+ f.doc.getMap('pages').set('journal',journal);
+ await sync.start();
+ const remote=new Y.Doc();
+ Y.applyUpdate(remote,Buffer.from(f.server.state,'base64'));
+ remote.getMap('pages').get('journal').set('deleted',true);
+ f.server.state=Buffer.from(Y.encodeStateAsUpdate(remote)).toString('base64');
+ f.server.revision++;
+ const archived=deferred();
+ f.setProtectHook(()=>archived.promise);
+ const syncing=sync.flush();
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(journal.get('deleted'),undefined);
+ archived.resolve();
+ await syncing;
+ assert.equal(journal.get('deleted'),true);
+ remote.destroy();
  sync.stop();
 });
