@@ -41,11 +41,11 @@ export function SyncDialog({config,onConfig,account,status,error,lastSync,busy,o
    <p>MacとiPhoneで同じメールアドレスを使うと、各端末で日記やリーフの続きを書けます。</p>
    <form onSubmit={e=>{e.preventDefault();if(canConnect&&email.trim())onSend(email.trim());}}>
     <label>同期するメールアドレス<input type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} required value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com"/></label>
-    <div className="settings-actions"><button className="primary" disabled={!canConnect||!email.trim()}>{sentTo?'ログインリンクを再送':'ログインリンクを送る'}</button></div>
+    <div className="settings-actions"><button className="primary" disabled={!canConnect||!email.trim()}>{sentTo?'認証メールを再送':'認証メールを送る'}</button></div>
    </form>
    {sentTo&&<p className="sync-email-sent" role="status"><strong>{sentTo} に送信しました。</strong> メールに認証コードがある場合は以下に入力してください。リンクのみの場合は従来の方法も利用できます。</p>}
    <form onSubmit={e=>{e.preventDefault();if(canConnect&&email.trim()&&/^[0-9]{6,8}$/.test(code.trim()))void onVerifyCode(email.trim(),code.trim()).then(valid=>{if(valid)setCode('');});}}>
-    <label>メールの認証コード<input type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,8}" maxLength={8} value={code} onChange={e=>setCode(e.target.value.replace(/\\D/g,''))} placeholder="6桁のコード"/></label>
+    <label>メールの認証コード<input type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,8}" maxLength={8} value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,''))} placeholder="6桁のコード"/></label>
     <div className="settings-actions"><button className="primary" disabled={!canConnect||!/^[0-9]{6,8}$/.test(code.trim())||!email.trim()}>コードでログインして同期</button></div>
    </form>
    <details className="sync-link">
