@@ -26,11 +26,24 @@
 
 ## 音声入力
 
-本文の「音声入力」からモデルを準備し、「録音を開始」→「停止して文字起こし」で入力します。確認画面で文章を修正して「本文に挿入」を押すと、カーソル位置へ追加します。選択していた既存の文章も残し、挿入前に復元用コピーを保存します。
+上部の雲ボタンからクラウド同期へログインし、本文の「音声入力」→「音声入力を開始」を押します。話している途中から文章を表示します。「停止して確認」後に修正・コピーでき、「本文に挿入」を押すとカーソル位置へ追加します。選択していた文章も保持し、挿入前に復元用コピーを保存します。
 
-Whisper-smallの多言語モデル（q8）をTransformers.jsのWeb Workerで実行し、日本語・英語を音声から判定します。言語の選択やAPIキーは不要で、文字起こしサービスの追加料金はかかりません。録音をサーバーへ送信しません。本文へ挿入した文章は通常どおり保存・同期されます。
+OpenAIの **GPT-Live-Transcribe**（`gpt-live-transcribe`）をRealtime API / WebRTCで使います。日本語と英語を候補言語に指定するので、切り替え操作は不要です。認識の遅延設定は精度を優先する `high` にしています。音声はOpenAIへ送信し、API料金は音声1分あたり $0.017（2026年11月19日の公式料金）です。APIクレジットが必要です。
 
-初回はHugging Faceから約300MBを取得するため、Wi-Fiでの準備を推奨します。モデルは端末ごとのブラウザキャッシュに保存し、キャッシュが削除された場合は再取得します。1回5分まで録音でき、画面を離れると録音を終了します。停止後に文字起こしする方式で、処理時間とメモリ使用量は端末によって変わります。最新のSafari・Chromeを対象としています。
+録音は1回5分までで、画面を離れると停止します。接続が切れた場合も受信済みの文章を確認・コピーできます。本文は挿入するまで変えません。既存のリーフや日記を音声の認識用コンテキストとして送信しません。MacのAI補助サーバーは不要です。
+
+### 音声APIのサーバー設定
+
+1. OpenAI PlatformでRealtime APIのRequest権限を持つ専用キーを作り、APIの支払い設定を完了します。
+2. SupabaseのEdge Function Secretsへ `OPENAI_API_KEY` と `VOICE_ALLOWED_USER_IDS`（本人のSupabase AuthのユーザーID）を設定します。許可IDが空なら利用を拒否します。APIキーをブラウザ、GitHub、リーフに保存しません。
+3. `supabase/functions/voice-session/index.ts` を `voice-session` としてデプロイします。`supabase/config.toml` のとおり、legacy secretだけを認めるゲートウェイ検証は使わず、関数内でSupabase Authへ問い合わせてJWTを検証し、利用者IDを照合します。
+4. CORSは既定で `https://harukisoma.github.io` のみを許可します。開発オリジンを追加する場合は、サーバーの `VOICE_ALLOWED_ORIGINS` で完全なオリジンを列挙します。
+
+ブラウザには有効期間30秒の一時認証だけを返し、長期APIキーを返しません。関数は音声や文字起こしを受け取りません。認証・モデル指定・エラー時の秘密情報の非開示・最終文章の確定と順序・マイクの解放を自動テストします。
+
+旧Whisper実装とTransformers.js依存は撤去しました。更新時は旧モデルの再取得可能なダウンロードキャッシュだけを整理します。リーフの保存領域とバックアップには触れません。
+
+公式仕様: [Realtime transcription](https://developers.openai.com/api/docs/guides/realtime-transcription)、[GPT-Live-Transcribe](https://developers.openai.com/api/docs/models/gpt-live-transcribe)
 
 ## 更新とデータ保護
 

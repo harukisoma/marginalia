@@ -1,0 +1,4 @@
+# Auth is mandatory inside the function via Supabase /auth/v1/user and an
+# explicit account allowlist. This supports current asymmetric JWT signing keys.
+[functions.voice-session]
+verify_jwt = false
