@@ -7,13 +7,19 @@ export function allowedRequestOrigin(origin,allowed,{method,path,pairing},expect
  // This exception authenticates the setup form; it never enables opaque-origin CORS.
  return origin==='null'&&method==='POST'&&path==='/connect-cloud'&&typeof expectedPairing==='string'&&expectedPairing.length>=32&&pairing===expectedPairing;
 }
-export function createAttempt(hostId,port,profile){
+export function setupReturn(input,allowed){
+ if(!input?.origin&&!input?.state)return null;
+ if(typeof input.origin!=='string'||!allowed.has(input.origin)||typeof input.state!=='string'||!/^[A-Za-z0-9_-]{32,128}$/.test(input.state))throw new Error('Marginaliaから接続画面を開き直してください。');
+ return {origin:input.origin,state:input.state};
+}
+export function createAttempt(hostId,port,profile,options={}){
  const verifier=randomBytes(48).toString('base64url'),state=randomBytes(32).toString('base64url'),nonce=randomBytes(32).toString('base64url');
  const redirect=`http://127.0.0.1:${port}/auth/callback`;
  const params=new URLSearchParams({client_id:profile?.client_id||'dynamic_agent_client',ext_agent_host_id:hostId,response_type:'code',redirect_uri:redirect,scope,resource,state,nonce,code_challenge_method:'S256',code_challenge:createHash('sha256').update(verifier).digest('base64url')});
  if(!profile?.client_id)params.set('agent_name_hint','Marginalia');
  if(profile?.id_token)params.set('id_token_hint',profile.id_token);
- return {verifier,state,nonce,redirect,clientId:profile?.client_id,subject:profile?.subject,created:Date.now(),url:'https://auth.openai.com/api/accounts/authorize?'+params};
+ if(options.consent)params.set('prompt','consent');
+ return {verifier,state,nonce,redirect,clientId:profile?.client_id,subject:profile?.subject,setup:options.setup,created:Date.now(),url:'https://auth.openai.com/api/accounts/authorize?'+params};
 }
 export function callbackClient(attempt,query){if(!attempt||Date.now()-attempt.created>600000||query.state!==attempt.state)throw new Error('認証状態が一致しないか、有効期限が切れました。再度接続してください。');if(query.error)throw new Error('ChatGPTの認証が許可されませんでした。');const clientId=query.client_id||attempt.clientId;if(!query.code||!clientId||clientId==='dynamic_agent_client'||(attempt.clientId&&attempt.clientId!==clientId))throw new Error('ChatGPTの登録情報を確認できませんでした。');return clientId;}
 export function parseAIResult(text,context){const stripped=text.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'');let result;try{result=JSON.parse(stripped);}catch{return {answer:text,references:[],edits:[]};}if(typeof result.answer!=='string')throw new Error('AIの応答形式を確認できませんでした。');const validIds=new Set(context.map(p=>p.id));const references=Array.isArray(result.references)?result.references.filter(id=>validIds.has(id)):[];const edits=Array.isArray(result.edits)?result.edits.filter(e=>validIds.has(e.pageId)&&typeof e.before==='string'&&e.before.length>0&&typeof e.after==='string'&&typeof e.reason==='string').map(e=>({pageId:e.pageId,before:e.before,after:e.after,reason:e.reason})):[];return{answer:result.answer,references,edits};}
