@@ -1,6 +1,6 @@
 import {createClient} from '@supabase/supabase-js';
 export class AIRelay{
- constructor({hostId,read,save,inference,models,connected}){Object.assign(this,{hostId,read,save,inference,models,connected});this.client=null;this.busy=false;}
+ constructor({hostId,read,save,inference,transcribe,models,connected}){Object.assign(this,{hostId,read,save,inference,models,connected});this.client=null;this.busy=false;}
  async connect(config,tokens){
   const url=new URL(config.url);if(url.protocol!=='https:'||!url.hostname.endsWith('.supabase.co')||!String(config.key).startsWith('sb_publishable_'))throw new Error('Supabaseの公開接続情報を確認してください。');
   this.stop();const store=await this.read('cloud-auth.json')||{};
@@ -16,7 +16,7 @@ export class AIRelay{
  async beat(){if(!this.client)return;const ready=this.connected();const catalog=ready?await this.models():[];const {error}=await this.client.from('ai_hosts').upsert({owner:this.owner,host_id:this.hostId,connected:ready,models:catalog,updated_at:new Date().toISOString()});if(error)throw new Error('AI中継テーブルを設定してください。');}
  async tick(){const client=this.client;if(!client||this.busy||!this.connected())return;this.busy=true;
   try{const {data,error}=await client.from('ai_requests').select('id,payload').eq('owner',this.owner).eq('status','queued').order('created_at').limit(1);if(error||!data?.length)return;const job=data[0];const claim=await client.from('ai_requests').update({status:'running',updated_at:new Date().toISOString()}).eq('id',job.id).eq('owner',this.owner).eq('status','queued').select('id');if(claim.error||!claim.data?.length)return;
-   try{const result=await this.inference(job.payload);await client.from('ai_requests').update({status:'completed',result,updated_at:new Date().toISOString()}).eq('id',job.id).eq('owner',this.owner);}catch(error){await client.from('ai_requests').update({status:'failed',error:error.message,updated_at:new Date().toISOString()}).eq('id',job.id).eq('owner',this.owner);}
+   try{const result=job.payload?.kind==='transcribe'?await this.transcribe(job.payload):await this.inference(job.payload);await client.from('ai_requests').update({status:'completed',result,updated_at:new Date().toISOString()}).eq('id',job.id).eq('owner',this.owner);}catch(error){await client.from('ai_requests').update({status:'failed',error:error.message,updated_at:new Date().toISOString()}).eq('id',job.id).eq('owner',this.owner);}
   }finally{this.busy=false;}
  }
 }
