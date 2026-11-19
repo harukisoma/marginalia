@@ -139,7 +139,7 @@ function App(){
    if(!sync.closed)setCloudEmail(sync.email);
   }
  }
- async function connectCloud(action?:{email:string}|{link:string},refresh=false){
+ async function connectCloud(action?:{email:string}|{link:string}|{email:string;code:string},refresh=false){
   if(!ready||cloudAction.current)return false;
   cloudAction.current=true;
   setCloudBusy(true);
@@ -186,6 +186,14 @@ function App(){
      }
     }).data.subscription;
    }
+   if(action&&'code' in action){
+    if(!/^[0-9]{6,8}$/.test(action.code))throw new Error('メールに届いた認証コードを確認してください。');
+    const {error}=await sync.client.auth.verifyOtp({email:action.email.trim(),token:action.code,type:'email'});
+    if(error)throw error;
+    await resumeCloud(sync,true);
+    setSentTo('');
+    return true;
+   }
    if(action&&'email' in action){
     const {error}=await sync.client.auth.signInWithOtp({email:action.email,options:{emailRedirectTo:location.origin+location.pathname}});
     if(error)throw error;
@@ -200,8 +208,9 @@ function App(){
    return true;
   }catch(error){
    const issue=error as {message?:string;code?:string};
-   const message=issue.code==='otp_expired'?'ログインリンクの有効期限が切れたか、すでに使用されています。新しいリンクを送ってください。':
-    issue.code==='over_email_send_rate_limit'||issue.code==='over_request_rate_limit'?'少し待ってから、ログインリンクを再送してください。':
+   const message=issue.code==='otp_expired'?
+    (action&&'code' in action?'認証コードが正しくないか、有効期限が切れています。最新のメールのコードを確認するか、認証メールを再送してください。':'ログインリンクの有効期限が切れたか、すでに使用されています。認証メールを再送してください。'):
+    issue.code==='over_email_send_rate_limit'||issue.code==='over_request_rate_limit'?'少し待ってから、認証メールを再送してください。':
     issue.message||'同期先に接続できませんでした。';
    if(action)setAuthError(message);
    else{setCloudSignedIn(false);setSyncStatus('error');setSyncError(message);}
@@ -306,7 +315,7 @@ function App(){
  {notice&&<div className="toast" role="status"><span>{notice}</span>{undoDelete&&<button className="undo-delete" onClick={()=>restoreLeaf(undoDelete)}><Undo2 size={14}/>元に戻す</button>}<button aria-label="通知を閉じる" onClick={()=>setNotice('')}><X size={16}/></button></div>}
  {syncOpen&&<SyncDialog config={config} onConfig={setConfig} account={cloudEmail}
   status={displayedSync} error={authError||syncError} lastSync={lastSync} busy={cloudBusy} online={online} sentTo={sentTo}
-  onSend={email=>void connectCloud({email})} onVerify={link=>connectCloud({link})} onRefresh={()=>void connectCloud(undefined,true)}
+  onSend={email=>void connectCloud({email})} onVerify={link=>connectCloud({link})} onVerifyCode={(email,code)=>connectCloud({email,code})} onRefresh={()=>void connectCloud(undefined,true)}
   onSignOut={()=>void signOutCloud()} onClose={()=>setSyncOpen(false)}/>}
  {settings&&<Dialog title="設定と接続" onClose={()=>setSettings(false)}>
   <section><h3><Cloud size={17}/>クラウド同期</h3><button disabled={!ready} onClick={openSync}>{syncLabels[displayedSync]} · 同期を開く</button></section><section><h3><Sparkles size={17}/>ChatGPT</h3><p>契約枠でAIを利用します。MacでAI補助サーバーを起動し、接続してください。GitHub PagesだけではAI認証を実行できません。iPhoneでは、クラウド経由でこのMacに依頼します。Macで補助サーバーが動いている必要があります。</p><label>AI補助サーバーURL<input value={bridge} onChange={e=>setBridge(e.target.value)} placeholder="http://127.0.0.1:4318"/></label><label>接続コード<input type="password" autoComplete="off" value={pairing} onChange={e=>setPairing(e.target.value)} placeholder="補助サーバー起動時に表示されるコード"/></label><div className="settings-actions"><button className="primary" onClick={signInAI}>Continue with ChatGPT</button><button onClick={async()=>{localStorage.setItem('marginalia-bridge',bridge);localStorage.setItem('marginalia-pairing',pairing);const result=await checkAI();notify(result?.planEnabled?'ChatGPTの契約枠に接続できました。':'接続を確認できません。補助サーバーと認証を確認してください。');}}>接続を確認</button></div>{aiStatus.connected&&<p>{aiStatus.email} · {aiStatus.planEnabled?'契約枠を使用':'契約枠の許可が必要'} <button onClick={async()=>{try{const result=await bridgeRequest('sign-out',{});setAiStatus({connected:false});notify(result.revoked?'ChatGPTから切断しました。':'端末から切断しました。ChatGPTの設定からも接続を解除してください。');}catch(error){notify((error as Error).message);}}}>切断</button></p>}<a href="https://chatgpt.com/settings/usage" target="_blank" rel="noreferrer">ChatGPTの利用上限と接続を管理 ↗</a><div className="settings-actions"><button disabled={!cloudSignedIn||pairing.length<20} onClick={enableRelay}>このMacをiPhone用のAI接続端末にする</button></div>{relayEnabled&&<p>別画面でMacとの連携結果を確認してください。</p>}</section><section><h3><Download size={17}/>バックアップ</h3><p>数式、リーフの構造、AIの変更案を含めて保存します。</p><div className="settings-actions"><button onClick={backup}>全リーフを保存</button><button onClick={()=>openRecovery()}>自動バックアップから復元</button><button onClick={()=>backupInput.current?.click()}>バックアップを読み込む</button></div></section><section><h3>表示</h3><button onClick={()=>setTheme(theme==='light'?'dark':'light')}>{theme==='light'?'ダークモードにする':'ライトモードにする'}</button></section></Dialog>}

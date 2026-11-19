@@ -3,7 +3,7 @@ import {Cloud,CloudOff,RefreshCw} from 'lucide-react';
 import {Dialog} from './dialog';
 import type {SyncConfig,SyncStatus} from './sync';
 
-export function SyncDialog({config,onConfig,account,status,error,lastSync,busy,online,sentTo,onSend,onVerify,onRefresh,onSignOut,onClose}:{
+export function SyncDialog({config,onConfig,account,status,error,lastSync,busy,online,sentTo,onSend,onVerify,onVerifyCode,onRefresh,onSignOut,onClose}:{
  config:SyncConfig;
  onConfig:(config:SyncConfig)=>void;
  account:string;
@@ -15,12 +15,14 @@ export function SyncDialog({config,onConfig,account,status,error,lastSync,busy,o
  sentTo:string;
  onSend:(email:string)=>void;
  onVerify:(link:string)=>Promise<boolean>;
+ onVerifyCode:(email:string,code:string)=>Promise<boolean>;
  onRefresh:()=>void;
  onSignOut:()=>void;
  onClose:()=>void;
 }){
  const [email,setEmail]=useState(sentTo);
  const [link,setLink]=useState('');
+ const [code,setCode]=useState('');
  const canConnect=online&&!busy&&Boolean(config.url&&config.key);
  const Icon=status==='offline'||status==='error'?CloudOff:Cloud;
  return <Dialog title="クラウド同期" className="sync-dialog" onClose={onClose}>
@@ -38,22 +40,26 @@ export function SyncDialog({config,onConfig,account,status,error,lastSync,busy,o
   </div>:<>
    <p>MacとiPhoneで同じメールアドレスを使うと、各端末で日記やリーフの続きを書けます。</p>
    <form onSubmit={e=>{e.preventDefault();if(canConnect&&email.trim())onSend(email.trim());}}>
-    <label>同期するメールアドレス<input type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} required value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com"/></label>
-    <div className="settings-actions"><button className="primary" disabled={!canConnect||!email.trim()}>{sentTo?'ログインリンクを再送':'ログインリンクを送る'}</button></div>
+    <label>同期するメールアドレス<input disabled={busy} type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} required value={email} onChange={e=>{setEmail(e.target.value);setCode('');}} placeholder="name@example.com"/></label>
+    <div className="settings-actions"><button className="primary" disabled={!canConnect||!email.trim()}>{sentTo?'認証メールを再送':'認証メールを送る'}</button></div>
    </form>
-   {sentTo&&<p className="sync-email-sent" role="status"><strong>{sentTo} に送信しました。</strong> メールを開き、同期したいブラウザでリンクを開いてください。</p>}
+   {sentTo&&<p className="sync-email-sent" role="status"><strong>{sentTo} に送信しました。</strong> メールに届いた最新の認証コードを入力してください。リンクでログインする場合は、下の「メールのリンクをここで使う」を開いてください。</p>}
+   <form onSubmit={e=>{e.preventDefault();if(canConnect&&email.trim()&&/^[0-9]{6,8}$/.test(code.trim()))void onVerifyCode(email.trim(),code.trim()).then(valid=>{if(valid)setCode('');});}}>
+    <label>メールの認証コード<input disabled={busy} type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,8}" maxLength={8} required spellCheck={false} value={code} onChange={e=>setCode(e.target.value.normalize('NFKC').replace(/\D/g,''))} placeholder="6桁のコード"/></label>
+    <div className="settings-actions"><button className="primary" disabled={!canConnect||!/^[0-9]{6,8}$/.test(code.trim())||!email.trim()}>コードでログインして同期</button></div>
+   </form>
    <details className="sync-link">
     <summary>メールのリンクをここで使う</summary>
     <p>ホーム画面から使っている場合は、メール内のログインリンクを長押しでコピーし、ここにペーストしてください。</p>
     <form onSubmit={e=>{e.preventDefault();if(canConnect&&link.trim())void onVerify(link.trim()).then(valid=>{if(valid)setLink('');});}}>
-     <label>ログインリンク<input type="url" inputMode="url" autoComplete="off" autoCapitalize="none" spellCheck={false} required value={link} onChange={e=>setLink(e.target.value)} placeholder="https://…"/></label>
+     <label>ログインリンク<input disabled={busy} type="url" inputMode="url" autoComplete="off" autoCapitalize="none" spellCheck={false} required value={link} onChange={e=>setLink(e.target.value)} placeholder="https://…"/></label>
      <div className="settings-actions"><button className="primary" disabled={!canConnect||!link.trim()}>ログインして同期</button></div>
     </form>
    </details>
    <details>
     <summary>接続先の詳細</summary>
-    <label>Supabase Project URL<input type="url" value={config.url} autoCapitalize="none" spellCheck={false} onChange={e=>onConfig({...config,url:e.target.value})}/></label>
-    <label>Publishable key<input value={config.key} autoCapitalize="none" spellCheck={false} onChange={e=>onConfig({...config,key:e.target.value})}/></label>
+    <label>Supabase Project URL<input disabled={busy} type="url" value={config.url} autoCapitalize="none" spellCheck={false} onChange={e=>onConfig({...config,url:e.target.value})}/></label>
+    <label>Publishable key<input disabled={busy} value={config.key} autoCapitalize="none" spellCheck={false} onChange={e=>onConfig({...config,key:e.target.value})}/></label>
    </details>
   </>}
  </Dialog>;
