@@ -3,9 +3,9 @@ import {VoiceTranscript} from './voice-transcript.mjs';
 export type VoiceAuthorize=(action:'status'|'create',signal:AbortSignal)=>Promise<{value?:string;ready?:boolean}>;
 export type LiveVoice={stop:()=>Promise<{text:string;incomplete:boolean}>;cancel:()=>void};
 
-type Options={authorize:VoiceAuthorize;signal:AbortSignal;onText:(text:string)=>void;onFailure:(text:string,message:string)=>void};
+type Options={authorize:VoiceAuthorize;signal:AbortSignal;onText:(text:string)=>void;onFailure:(text:string,message:string)=>void;capture?:()=>Promise<MediaStream>};
 
-export async function startLiveVoice({authorize,signal,onText,onFailure}:Options):Promise<LiveVoice>{
+export async function startLiveVoice({authorize,signal,onText,onFailure,capture}:Options):Promise<LiveVoice>{
  if(!navigator.mediaDevices?.getUserMedia||!window.RTCPeerConnection){
   throw new Error('音声入力に対応したSafari・Chromeの最新版で開いてください。');
  }
@@ -53,7 +53,7 @@ export async function startLiveVoice({authorize,signal,onText,onFailure}:Options
   check();
   await authorize('status',signal);
   check();
-  stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  stream=await (capture?capture():navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}}));
   check();
   // Capture is muted until the transcription session has actually connected.
   stream.getAudioTracks().forEach(track=>{track.enabled=false;});
