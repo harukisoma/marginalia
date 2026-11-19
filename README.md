@@ -39,6 +39,8 @@ OpenAIの **GPT-Live-Transcribe**（`gpt-live-transcribe`）をRealtime API / We
 3. `supabase/functions/voice-session/index.ts` を `voice-session` としてデプロイします。`supabase/config.toml` のとおり、legacy secretだけを認めるゲートウェイ検証は使わず、関数内でSupabase Authへ問い合わせてJWTを検証し、利用者IDを照合します。
 4. CORSは既定で `https://harukisoma.github.io` のみを許可します。開発オリジンを追加する場合は、サーバーの `VOICE_ALLOWED_ORIGINS` で完全なオリジンを列挙します。
 
+秘密鍵はSupabaseのサーバー専用Secretsで管理します。`.env*` と `.runtime/` はGit管理・開発サーバーの配信対象から除外し、`VITE_*` に長期APIキーを設定しません。公開ビルドとCIはOpenAI秘密鍵・Supabase秘密鍵・service_role JWT・秘密鍵PEMを検出すると失敗します。`git config core.hooksPath .githooks` で、push前に送信する履歴も検査します。検出した値をログへ出しません。
+
 ブラウザには有効期間30秒の一時認証だけを返し、長期APIキーを返しません。関数は音声や文字起こしを受け取りません。認証・モデル指定・エラー時の秘密情報の非開示・最終文章の確定と順序・マイクの解放を自動テストします。
 
 旧Whisper実装とTransformers.js依存は撤去しました。更新時は旧モデルの再取得可能なダウンロードキャッシュだけを整理します。リーフの保存領域とバックアップには触れません。
