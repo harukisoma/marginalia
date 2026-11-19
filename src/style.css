@@ -128,3 +128,15 @@
 .startup-recovery button,.journal-recovery button{min-height:44px}
 .journal-recovery{display:flex;justify-content:center;flex-wrap:wrap;gap:8px}
 .journal-recovery button{border:1px solid var(--border);background:var(--paper);color:var(--green)}
+
+/* Local, high-quality Whisper dictation */
+.voice-widget{position:relative;display:inline-flex;align-items:center;gap:4px;flex-shrink:0}
+.voice-widget>button{font-size:11px;white-space:nowrap}
+.voice-widget .voice-active{color:#b33636;background:#fce8e8}
+.voice-widget>small{font-size:10px}
+.voice-error{color:#b33636!important}
+.voice-review{position:absolute;z-index:25;bottom:calc(100% + 12px);left:0;width:min(370px,calc(100vw - 48px));padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--paper);box-shadow:var(--shadow)}
+.voice-review label{display:block;font-size:11px}
+.voice-review textarea{display:block;width:100%;padding:10px;margin:8px 0;border:1px solid var(--border);resize:vertical;background:var(--bg);font-size:12px;line-height:1.6}
+.voice-review>div{display:flex;gap:8px;justify-content:flex-end}
+@media(max-width:820px){.voice-review{left:-10px}}
