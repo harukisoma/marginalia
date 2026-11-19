@@ -1,0 +1,4 @@
+<!doctype html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Marginalia 音声API診断</title>
+<style>body{max-width:620px;margin:60px auto;padding:20px;font:16px/1.8 system-ui;color:#172b28;background:#f8f7f3}button{font:inherit;padding:12px 18px;border:0;border-radius:8px;background:#294b41;color:white;cursor:pointer}button:disabled{opacity:.5}pre{white-space:pre-wrap;border:1px solid #d8ddd5;border-radius:8px;background:white;padding:20px;min-height:130px}small{color:#67756e}</style></head><body>
+<h1>音声APIの動作確認</h1><p>日本語と英語の合成音声（約12秒）をOpenAIへ送信します。マイク・既存のリーフは使いません。API従量課金の対象です。</p><button id="run">サンプル音声で確認</button><p role="status" id="status">待機中</p><pre aria-label="認識結果" id="output"></pre><small>Marginaliaにログインしているブラウザで使用してください。</small>
+<script type="module" src="./voice-api.ts"></script></body></html>
