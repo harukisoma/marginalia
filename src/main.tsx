@@ -188,7 +188,7 @@ function App(){
    }
    if(action&&'code' in action){
     if(!/^[0-9]{6,8}$/.test(action.code))throw new Error('メールに届いた認証コードを確認してください。');
-    const {error}=await sync.client.auth.verifyOtp({email:action.email,token:action.code,type:'email'});
+    const {error}=await sync.client.auth.verifyOtp({email:action.email.trim(),token:action.code,type:'email'});
     if(error)throw error;
     await resumeCloud(sync,true);
     setSentTo('');
@@ -208,8 +208,9 @@ function App(){
    return true;
   }catch(error){
    const issue=error as {message?:string;code?:string};
-   const message=issue.code==='otp_expired'?'ログインリンクの有効期限が切れたか、すでに使用されています。新しいリンクを送ってください。':
-    issue.code==='over_email_send_rate_limit'||issue.code==='over_request_rate_limit'?'少し待ってから、ログインリンクを再送してください。':
+   const message=issue.code==='otp_expired'?
+    (action&&'code' in action?'認証コードが正しくないか、有効期限が切れています。最新のメールのコードを確認するか、認証メールを再送してください。':'ログインリンクの有効期限が切れたか、すでに使用されています。認証メールを再送してください。'):
+    issue.code==='over_email_send_rate_limit'||issue.code==='over_request_rate_limit'?'少し待ってから、認証メールを再送してください。':
     issue.message||'同期先に接続できませんでした。';
    if(action)setAuthError(message);
    else{setCloudSignedIn(false);setSyncStatus('error');setSyncError(message);}
