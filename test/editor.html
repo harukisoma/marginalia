@@ -3,9 +3,11 @@ import {Editor} from '@tiptap/core';
 import Collaboration from '@tiptap/extension-collaboration';
 import {doc,pages,persistence,createPage,updatePage} from '/src/data.ts';
 import {baseExtensions,cleanHTML,htmlToMarkdown,getPageMarkdown,applyPagePatch,createReviewExtension,inlineReviewKey} from '/src/editor.tsx';
+import {VoiceInsertionAnchor,voiceAnchorKey} from '/src/voice-placement.ts';
+import {transcriptContent} from '/src/voice-transcript.mjs';
 const checks=[],created=[],actions=[];
 const assert=(name,condition)=>{checks.push((condition?'PASS':'FAIL')+' '+name);if(!condition)throw new Error(name);};
-const make=(markdown)=>{const page=createPage();created.push(page.id);const element=document.createElement('div');element.style.display='none';document.body.append(element);const editor=new Editor({element,extensions:[...baseExtensions(),createReviewExtension((key,accept)=>actions.push({key,accept})),Collaboration.configure({document:doc,fragment:doc.getXmlFragment('page:'+page.id)})]});editor.commands.setContent(cleanHTML(markdown));return{page,editor};};
+const make=(markdown)=>{const page=createPage();created.push(page.id);const element=document.createElement('div');element.style.display='none';document.body.append(element);const editor=new Editor({element,extensions:[...baseExtensions(),VoiceInsertionAnchor,createReviewExtension((key,accept)=>actions.push({key,accept})),Collaboration.configure({document:doc,fragment:doc.getXmlFragment('page:'+page.id)})]});editor.commands.setContent(cleanHTML(markdown));return{page,editor};};
 try{
  await persistence.whenSynced;
  const tex=String.raw`\begin{aligned} A&=\begin{pmatrix}a&b\\c&d\end{pmatrix}\\ \mathbb E[X]&=\int xf(x)\,dx\end{aligned}`;
@@ -37,6 +39,15 @@ try{
  assert('Review action identifies the individual proposal',actions.at(-1).key==='preview:0'&&!actions.at(-1).accept);
  applyPagePatch(first.page.id,'Approved paragraph','Locally updated paragraph',first.editor);
  assert('Stale inline review disables approval',!!first.editor.view.dom.querySelector('.stale-review button:disabled'));
+ const voice=make('前の文章。ここから後ろの文章。\n\n別の段落は保持します。');
+ const voiceBaseline=getPageMarkdown(voice.page.id),voiceHTML=voice.editor.getHTML(),voiceBytes=JSON.stringify(Array.from((await import('yjs')).encodeStateAsUpdate(doc)));
+ const voiceUntouched=doc.getXmlFragment('page:'+voice.page.id).get(1);
+ voice.editor.view.dispatch(voice.editor.state.tr.setMeta(voiceAnchorKey,{position:6,valid:true}));
+ assert('Voice insertion marker renders without changing Markdown, HTML or Yjs bytes',!!voice.editor.view.dom.querySelector('.voice-insertion-marker')&&getPageMarkdown(voice.page.id)===voiceBaseline&&voice.editor.getHTML()===voiceHTML&&JSON.stringify(Array.from((await import('yjs')).encodeStateAsUpdate(doc)))===voiceBytes);
+ voice.editor.commands.insertContentAt(6,transcriptContent('音声で追加。'));
+ assert('Voice inserts at the chosen caret and preserves unrelated CRDT blocks',getPageMarkdown(voice.page.id).includes('前の文章。音声で追加。ここから後ろの文章。')&&doc.getXmlFragment('page:'+voice.page.id).get(1)===voiceUntouched);
+ voice.editor.view.dispatch(voice.editor.state.tr.setMeta(voiceAnchorKey,null));
+ assert('Closing voice input removes its display-only marker',!voice.editor.view.dom.querySelector('.voice-insertion-marker'));voice.editor.destroy();
  const palette=make('Palette text');palette.editor.chain().selectAll().setColor('var(--text-sage)').setHighlight({color:'#dbe7d5'}).run();
  const colors=htmlToMarkdown(palette.editor.getHTML());palette.editor.commands.setContent(cleanHTML(colors));
  assert('Palette text and highlight colors survive Markdown round trip',palette.editor.getHTML().includes('var(--text-sage)')&&palette.editor.getHTML().includes('219, 231, 213')&&!palette.editor.getHTML().includes('data-markdown-extra'));
@@ -45,7 +56,7 @@ try{
  const {checkpoint,listRecovery,readRecovery,decodeRecovery,recoveryPages,restoreLeafCopy,importBackupForRecovery}=await import('/src/recovery.ts');
  await checkpoint('Integration safety check');const saved=(await listRecovery())[0];const snapshot=await readRecovery(saved.id);const recovered=decodeRecovery(snapshot);
  const original=recoveryPages(recovered).find(p=>p.id===palette.page.id);
- palette.editor.commands.setContent(cleanHTML('Changed after checkpoint'));const restored=await restoreLeafCopy(original,colors);created.push(restored.id);
+ palette.editor.commands.setContent(cleanHTML('Changed after checkpoint'));const restored=await restoreLeafCopy(original,recovered);created.push(restored.id);
  assert('Recovery creates another leaf without overwriting current content',restored.id!==palette.page.id&&getPageMarkdown(palette.page.id).includes('Changed after checkpoint')&&getPageMarkdown(restored.id).includes('Palette text'));
  const stateBeforeImport=JSON.stringify(Array.from((await import('yjs')).encodeStateAsUpdate(doc)));await importBackupForRecovery(JSON.stringify({format:'marginalia-yjs-v1',state:Array.from(snapshot.state)}));
  assert('Importing an old backup never rewrites the live workspace',stateBeforeImport===JSON.stringify(Array.from((await import('yjs')).encodeStateAsUpdate(doc))));
