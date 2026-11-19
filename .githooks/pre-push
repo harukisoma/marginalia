@@ -1,0 +1,3 @@
+#!/bin/sh
+# Check outgoing history as well as current tracked files before any git upload.
+exec node scripts/check-secrets.mjs --pre-push
