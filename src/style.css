@@ -180,3 +180,10 @@ main:has(.voice-dock){scroll-padding-bottom:110px}
 }
 @media(prefers-reduced-motion:reduce){.voice-status svg,.voice-recording-dot{animation:none}}
 @media print{.voice-dock,.voice-dialog-root{display:none!important}}
+.ai-connection-status{padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--side)}
+.ai-connection-status strong{font-size:13px;font-weight:600}
+.ai-connection-status p:last-child{margin-bottom:0}
+.companion-launch{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;text-decoration:none}
+.ai-advanced{margin-top:20px;border-top:1px solid var(--border);padding-top:8px}
+.ai-advanced summary{font-size:12px;color:var(--muted)}
+.ai-advanced>button{font-size:12px;margin:6px 4px 0 0;border:1px solid var(--border)}
