@@ -35,7 +35,8 @@ import {liteAdaptor} from 'mathjax-full/js/adaptors/liteAdaptor.js';
 import {RegisterHTMLHandler} from 'mathjax-full/js/handlers/html.js';
 import {AllPackages} from 'mathjax-full/js/input/tex/AllPackages.js';
 import {ArrowUpRight,Code2,Copy,Plus,Check,ChevronUp,ChevronDown} from 'lucide-react';
-import {applyExactPatch} from './patch.mjs';
+import {applyExactPatch,planExactPatches} from './patch.mjs';
+import {Step} from '@tiptap/pm/transform';
 import {markdownHTML,markdownSearchText} from './markdown.mjs';
 import {textFromBlocks} from './library.mjs';
 import {doc,pages,updatePage} from './data';
@@ -116,6 +117,38 @@ export function applyPagePatch(id:string,before:string,after:string,live:Editor|
   const {from,to,replacement}=locateDocumentPatch(editor.state.doc,before,after);
   if(replacement.trim())editor.commands.insertContentAt({from,to},cleanHTML(replacement));else editor.commands.deleteRange({from,to});updatePage(id,{});
  }finally{if(temporary)editor.destroy();}
+}
+export function applyPagePatchBatch(edits:{pageId:string;before:string;after:string}[],livePage:string|null=null,live:Editor|null=null){
+ const grouped=new Map<string,typeof edits>();for(const edit of edits)grouped.set(edit.pageId,[...(grouped.get(edit.pageId)||[]),edit]);
+ const plans:{id:string;initial:object;final:object;steps:object[];empty:boolean}[]=[];
+ // Build every transaction in detached editors first. A stale or overlapping
+ // proposal anywhere stops the whole batch, including edits on other pages.
+ for(const [id,items] of grouped){
+  const page=pages.get(id);if(!page||page.deleted)throw new Error('対象のリーフが見つかりません。');
+  const fragment=doc.getXmlFragment('page:'+id),empty=!fragment.length;
+  const content=livePage===id&&live?live.getJSON():empty?cleanHTML(doc.getMap<string>('seeds').get(id)||''):yXmlFragmentToProsemirrorJSON(fragment);
+  const mirror=new CoreEditor({element:document.createElement('div'),extensions:baseExtensions(),content});
+  try{
+   const initial=mirror.getJSON(),steps:object[]=[];
+   const source=htmlToMarkdown(mirror.getHTML()),ordered=planExactPatches(source,items);
+   mirror.on('transaction',({transaction})=>{steps.push(...transaction.steps.map(step=>step.toJSON()));});
+   for(const item of ordered){const {from,to,replacement}=locateDocumentPatch(mirror.state.doc,item.before,item.after);if(replacement.trim())mirror.commands.insertContentAt({from,to},cleanHTML(replacement));else mirror.commands.deleteRange({from,to});}
+   plans.push({id,initial,final:mirror.getJSON(),steps,empty});
+  }finally{mirror.destroy();}
+ }
+ const temporary:CoreEditor[]=[],transactions:{id:string;editor:Editor;transaction:ReturnType<Editor['state']['tr']['setMeta']>}[]=[];
+ try{
+  for(const plan of plans){
+   const target=livePage===plan.id&&live?live:new CoreEditor({element:document.createElement('div'),extensions:[...baseExtensions(),Collaboration.configure({document:doc,fragment:doc.getXmlFragment('page:'+plan.id)})]});
+   if(target!==live)temporary.push(target);
+   const tr=target.state.tr;
+   if(plan.empty)tr.replaceWith(0,tr.doc.content.size,target.schema.nodeFromJSON(plan.final).content);
+   else{if(JSON.stringify(target.getJSON())!==JSON.stringify(plan.initial))throw new Error('本文が更新されました。変更案を再確認してください。');for(const step of plan.steps)tr.step(Step.fromJSON(target.schema,step));}
+   if(JSON.stringify(tr.doc.toJSON())!==JSON.stringify(plan.final))throw new Error('変更案を安全に反映できませんでした。個別に確認してください。');
+   transactions.push({id:plan.id,editor:target,transaction:tr});
+  }
+  doc.transact(()=>{for(const item of transactions){item.editor.view.dispatch(item.transaction);updatePage(item.id,{});}});
+ }finally{temporary.forEach(editor=>editor.destroy());}
 }
 export function RichEditor({pageId,onReady,onChange,reviews=[],onReviewAction=()=>{},voiceAuthorize}:{pageId:string;onReady:(editor:Editor|null)=>void;onChange:()=>void;reviews?:InlineReview[];onReviewAction?:(key:string,accept:boolean)=>void;voiceAuthorize?:VoiceAuthorize}){
  const actionRef=useRef(onReviewAction);actionRef.current=onReviewAction;const reviewExtension=useMemo(()=>createReviewExtension((key,accept)=>actionRef.current(key,accept)),[]);

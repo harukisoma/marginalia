@@ -1,3 +1,4 @@
+import {leafClassifications,matchesClassification} from './taxonomy.mjs';
 /** @type {Record<string,string>} */
 export const leafStatuses={unread:'未着手',reading:'進行中',done:'完了'};
 export const normalize=value=>String(value||'').normalize('NFKC').toLocaleLowerCase('ja').replace(/\s+/g,' ').trim();
@@ -8,8 +9,8 @@ export function filterLeaves(pages,{query='',tag='',untagged=false,status='',kin
  const words=normalize(query).split(' ').filter(Boolean);
  return pages.filter(page=>{
   if(kind&&page.kind!==kind||status&&page.status!==status)return false;
-  const tags=Array.isArray(page.tags)?page.tags:[];
-  if(untagged&&tags.length||tag&&!tags.some(value=>normalize(value)===normalize(tag)))return false;
+  const tags=leafClassifications(page).map(item=>item.name);
+  if(untagged&&tags.length||tag&&!matchesClassification(page,tag))return false;
   if(!words.length)return true;
   const metadata=normalize([page.title,page.author,...tags].join(' '));
   // Load the cached body only if the metadata cannot already answer the query.

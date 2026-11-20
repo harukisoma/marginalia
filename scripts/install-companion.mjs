@@ -19,7 +19,7 @@ export async function installCompanion(){
  // Copy executable files, never the notebook or browser storage. Credentials in
  // the installed runtime survive source edits, releases and repository moves.
  for(const directory of ['server','dist','node_modules'])await cp(join(source,directory),join(root,directory),{recursive:true,force:true,verbatimSymlinks:true});
- await mkdir(join(root,'src'),{recursive:true});await cp(join(source,'src/patch.mjs'),join(root,'src/patch.mjs'));await cp(join(source,'package.json'),join(root,'package.json'));
+ await mkdir(join(root,'src'),{recursive:true});for(const name of ['patch.mjs','ai-request.mjs'])await cp(join(source,'src',name),join(root,'src',name));await cp(join(source,'package.json'),join(root,'package.json'));
  await mkdir(runtime,{recursive:true,mode:0o700});await chmod(runtime,0o700);
  for(const file of ['host.json','registration.json','chatgpt.json','cloud-config.json','cloud-auth.json']){
   try{await access(join(runtime,file));}catch{try{await cp(join(source,'.runtime',file),join(runtime,file),{force:false,errorOnExist:true});await chmod(join(runtime,file),0o600);}catch(error){if(error.code!=='ENOENT'&&error.code!=='ERR_FS_CP_EEXIST')throw error;}}

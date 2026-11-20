@@ -2,7 +2,7 @@
 import {Editor} from '@tiptap/core';
 import Collaboration from '@tiptap/extension-collaboration';
 import {doc,pages,persistence,createPage,updatePage} from '/src/data.ts';
-import {baseExtensions,cleanHTML,htmlToMarkdown,getPageMarkdown,getPageSearchText,applyPagePatch,createReviewExtension,inlineReviewKey} from '/src/editor.tsx';
+import {baseExtensions,cleanHTML,htmlToMarkdown,getPageMarkdown,getPageSearchText,applyPagePatch,applyPagePatchBatch,createReviewExtension,inlineReviewKey} from '/src/editor.tsx';
 import {VoiceInsertionAnchor,voiceAnchorKey} from '/src/voice-placement.ts';
 import {transcriptContent} from '/src/voice-transcript.mjs';
 const checks=[],created=[],actions=[];
@@ -10,6 +10,25 @@ const assert=(name,condition)=>{checks.push((condition?'PASS':'FAIL')+' '+name);
 const make=(markdown)=>{const page=createPage();created.push(page.id);const element=document.createElement('div');element.style.display='none';document.body.append(element);const editor=new Editor({element,extensions:[...baseExtensions(),VoiceInsertionAnchor,createReviewExtension((key,accept)=>actions.push({key,accept})),Collaboration.configure({document:doc,fragment:doc.getXmlFragment('page:'+page.id)})]});editor.commands.setContent(cleanHTML(markdown));return{page,editor};};
 try{
  await persistence.whenSynced;
+
+ const batch=make('Alpha and Beta in one paragraph.\n\nUnrelated block.');
+ const otherBatch=make('Other target.\n\nKeep other block.');
+ const batchUntouched=doc.getXmlFragment('page:'+batch.page.id).get(1),otherUntouched=doc.getXmlFragment('page:'+otherBatch.page.id).get(1);
+ const pendingBatch=[{pageId:batch.page.id,before:'Alpha',after:'First'},{pageId:batch.page.id,before:'Beta',after:'Second'},{pageId:otherBatch.page.id,before:'Other target',after:'Other approved'}];
+ const batchState=Y=>Array.from(Y.encodeStateAsUpdate(doc)).join(',');
+ const YBatch=await import('yjs');let baselineBatch=batchState(YBatch),batchRejected=false;
+ try{applyPagePatchBatch([...pendingBatch,{pageId:otherBatch.page.id,before:'Stale missing',after:'bad'}],batch.page.id,batch.editor);}catch{batchRejected=true;}
+ assert('Stale multi-page batch changes no saved bytes',batchRejected&&batchState(YBatch)===baselineBatch);
+ applyPagePatchBatch(pendingBatch,batch.page.id,batch.editor);
+ assert('Bulk approval supports independent edits in the same paragraph and across pages',getPageMarkdown(batch.page.id).includes('First and Second')&&getPageMarkdown(otherBatch.page.id).includes('Other approved'));
+ assert('Bulk approval preserves unrelated blocks on all pages',doc.getXmlFragment('page:'+batch.page.id).get(1)===batchUntouched&&doc.getXmlFragment('page:'+otherBatch.page.id).get(1)===otherUntouched);
+ baselineBatch=batchState(YBatch);batchRejected=false;
+ try{applyPagePatchBatch([{pageId:batch.page.id,before:'First and',after:'A'},{pageId:batch.page.id,before:'and Second',after:'B'}],batch.page.id,batch.editor);}catch{batchRejected=true;}
+ assert('Overlapping bulk proposals stop without writing any saved bytes',batchRejected&&batchState(YBatch)===baselineBatch);
+ const seeded=createPage('book');created.push(seeded.id);doc.getMap('seeds').set(seeded.id,'Seed target.\n\nKeep seeded block.');
+ applyPagePatchBatch([{pageId:seeded.id,before:'Seed target',after:'Approved seed'}]);
+ assert('Bulk approval initializes an old Markdown seed only when approved',getPageMarkdown(seeded.id).includes('Approved seed')&&getPageMarkdown(seeded.id).includes('Keep seeded block'));
+ batch.editor.destroy();otherBatch.editor.destroy();
  const tex=String.raw`\begin{aligned} A&=\begin{pmatrix}a&b\\c&d\end{pmatrix}\\ \mathbb E[X]&=\int xf(x)\,dx\end{aligned}`;
  const input='# Title\n\nFirst paragraph\n\nUnrelated paragraph\n\n$$\n'+tex+'\n$$\n\n| Name | Value |\n| --- | --- |\n| A | B |\n\n~~strike~~ and ==highlight== and $x^2$ and <u>underline</u>.\n\nFootnote[^memo].\n\n[^memo]: Stored footnote.\n\n```typescript\nconst value: number = 42;\n```';
  const first=make(input);const encoded=htmlToMarkdown(first.editor.getHTML());
@@ -64,9 +83,11 @@ try{
  const legacy=(await import('yjs')).Doc;const historical=new legacy();(await import('yjs')).applyUpdate(historical,new Uint8Array((await (await fetch('/test/fixtures/notebook-v1.json')).json()).state));const oldMarkdown=htmlToMarkdown((await import('/src/editor.tsx')).getPageHTML('legacy-paper-v1',true,historical));assert('Frozen v1 backup renders with legacy colors, math and code',oldMarkdown.includes('色付きの考察')&&oldMarkdown.includes('165, 94, 70')&&oldMarkdown.includes('\\begin{pmatrix}')&&oldMarkdown.includes('return x ** 2'));historical.destroy();
  const styled=make('**bold** and `a*b` and $x^2$');styled.editor.chain().selectAll().setColor('var(--text-blue)').setHighlight({color:'#dbe8ee'}).run();styled.editor.commands.setContent(cleanHTML(htmlToMarkdown(styled.editor.getHTML())));assert('Styled inline code, math and bold retain their meaning',styled.editor.state.doc.textContent.includes('a*b')&&styled.editor.getHTML().includes('data-source="x^2"')&&!!styled.editor.view.dom.querySelector('strong')&&styled.editor.view.dom.querySelector('strong').textContent==='bold');applyPagePatch(styled.page.id,'bold','clear',styled.editor);assert('Partial edits inside colored text remain formatted',styled.editor.view.dom.querySelector('strong')?.textContent==='clear'&&styled.editor.getHTML().includes('var(--text-blue)'));styled.editor.destroy();
  const {checkpoint,listRecovery,readRecovery,decodeRecovery,recoveryPages,restoreLeafCopy,importBackupForRecovery}=await import('/src/recovery.ts');
+ updatePage(palette.page.id,{noteTypes:['Podcast','自分のアウトプット'],tags:['以前のタグ']});
  await checkpoint('Integration safety check');const saved=(await listRecovery())[0];const snapshot=await readRecovery(saved.id);const recovered=decodeRecovery(snapshot);
  const original=recoveryPages(recovered).find(p=>p.id===palette.page.id);
  palette.editor.commands.setContent(cleanHTML('Changed after checkpoint'));const restored=await restoreLeafCopy(original,recovered);created.push(restored.id);
+ assert('Recovery retains category-specific classifications and legacy tags',JSON.stringify(pages.get(restored.id).noteTypes)===JSON.stringify(['Podcast','自分のアウトプット'])&&pages.get(restored.id).tags[0]==='以前のタグ');
  assert('Recovery creates another leaf without overwriting current content',restored.id!==palette.page.id&&getPageMarkdown(palette.page.id).includes('Changed after checkpoint')&&getPageMarkdown(restored.id).includes('Palette text'));
  const stateBeforeImport=JSON.stringify(Array.from((await import('yjs')).encodeStateAsUpdate(doc)));await importBackupForRecovery(JSON.stringify({format:'marginalia-yjs-v1',state:Array.from(snapshot.state)}));
  assert('Importing an old backup never rewrites the live workspace',stateBeforeImport===JSON.stringify(Array.from((await import('yjs')).encodeStateAsUpdate(doc))));
