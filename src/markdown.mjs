@@ -46,3 +46,16 @@ export function markdownHTML(source){
  if(definitions.length)rendered=rendered.replace(/<hr class="footnotes-sep">\s*<section class="footnotes">[\s\S]*?<\/section>/,definitions.map(def=>`<div data-markdown-extra="${escape(def)}">${escape(def)}</div>`).join(''));
  return rendered.replace(/<li class="task-list-item[^>]*>\s*<input([^>]+)>/g,(_m,attrs)=>`<li data-type="taskItem" data-checked="${attrs.includes('checked')}">`).replace(/<ul class="contains-task-list">/g,'<ul data-type="taskList">');
 }
+
+// Search imported Markdown without creating image elements or fetching media.
+export function markdownSearchText(source){
+ const plain=token=>{
+  if(token.type==='image')return token.content||'';
+  if(token.children)return token.children.map(plain).join('');
+  if(['text','code_inline','code_block','fence','math_inline','math_block'].includes(token.type))return token.content||'';
+  if(token.type==='html_inline'||token.type==='html_block')return token.content.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi,' ').replace(/<img\b[^>]*\balt=["']([^"']*)["'][^>]*>/gi,' $1 ').replace(/<[^>]*>/g,' ');
+  if(token.type==='softbreak'||token.type==='hardbreak'||token.type.endsWith('_close'))return ' ';
+  return '';
+ };
+ return markdown.parse(source,{}).map(plain).join('').replace(/\s+/g,' ').trim();
+}

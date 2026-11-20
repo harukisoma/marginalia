@@ -1,0 +1,23 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>Marginalia 合成データの検証</title></head><body><h1>独立した開発環境専用</h1><p>実在する記録を含まない180件のリーフを作成し、新しい一覧を検証します。</p><button id="seed">合成ワークスペースを作成して開く</button><p id="result"></p><script type="module">
+import {doc,pages,persistence,createPage} from '/src/data.ts';
+const allowed=import.meta.env.DEV&&location.hostname==='127.0.0.1'&&location.port==='4198';
+document.querySelector('#seed').disabled=!allowed;
+document.querySelector('#seed').addEventListener('click',async()=>{
+ if(!allowed)return;
+ await persistence.whenSynced;
+ const fixtures=doc.getMap('test-fixtures');
+ if(!fixtures.has('organized-workspace-v1'))doc.transact(()=>{
+  const titles=['インターフェース設計の原則','読んだことを自分の言葉で残す','分散システムの読書メモ','研究テーマのアイデア','小さな改善を積み重ねる','今週の振り返り','機械学習の基礎と実践','アクセシビリティのチェックリスト','次に読みたい論文','文章を整理するための下書き','知識のつながりを見つける','新しいプロジェクトの構想'];
+  const tags=['UI改善','あとで読む','研究','アイデア','学習','参考資料'];
+  const ids=[];
+  for(let i=0;i<180;i++){
+   const kind=['note','paper','book','journal'][i%4],page=createPage(kind);ids.push(page.id);
+   pages.set(page.id,{...page,title:titles[i%titles.length]+(i>=12?' '+String(Math.floor(i/12)+1).padStart(2,'0'):''),status:['reading','unread','done'][i%3],tags:i%9===0?[]:[tags[i%tags.length],...(i%3===0?['要約']:[])],parent:i>12&&i%7===0?ids[0]:'',created:Date.now()-i*86400000,updated:Date.now()-i*3600000});
+   doc.getMap('seeds').set(page.id,'## 気づいたこと\n\nこれはUI検証専用の合成テキストです。個人の日記や実在するノートは含みません。\n\n'+(i===27?'本文だけにある特別検索語 ネコの図書館。':'読みやすい一覧と、見つけやすい記録について考える。')+'\n\n- タグで分類する\n- 続きを書く');
+  }
+  for(const name of tags)doc.getMap('labels').set(name,{name});
+  fixtures.set('organized-workspace-v1',true);
+ });
+ document.querySelector('#result').textContent='合成データの準備ができました。';location.assign('/');
+});
+</script></body></html>

@@ -2,7 +2,7 @@
 import {Editor} from '@tiptap/core';
 import Collaboration from '@tiptap/extension-collaboration';
 import {doc,pages,persistence,createPage,updatePage} from '/src/data.ts';
-import {baseExtensions,cleanHTML,htmlToMarkdown,getPageMarkdown,applyPagePatch,createReviewExtension,inlineReviewKey} from '/src/editor.tsx';
+import {baseExtensions,cleanHTML,htmlToMarkdown,getPageMarkdown,getPageSearchText,applyPagePatch,createReviewExtension,inlineReviewKey} from '/src/editor.tsx';
 import {VoiceInsertionAnchor,voiceAnchorKey} from '/src/voice-placement.ts';
 import {transcriptContent} from '/src/voice-transcript.mjs';
 const checks=[],created=[],actions=[];
@@ -48,6 +48,16 @@ try{
  assert('Voice inserts at the chosen caret and preserves unrelated CRDT blocks',getPageMarkdown(voice.page.id).includes('前の文章。音声で追加。ここから後ろの文章。')&&doc.getXmlFragment('page:'+voice.page.id).get(1)===voiceUntouched);
  voice.editor.view.dispatch(voice.editor.state.tr.setMeta(voiceAnchorKey,null));
  assert('Closing voice input removes its display-only marker',!voice.editor.view.dom.querySelector('.voice-insertion-marker'));voice.editor.destroy();
+ const search=make('本文だけの検索語 **保持した強調** と $x^2$');
+ const searchBytes=JSON.stringify(Array.from((await import('yjs')).encodeStateAsUpdate(doc)));
+ assert('Body search reads formatted text without changing saved Yjs data',getPageSearchText(search.page.id).includes('本文だけの検索語')&&JSON.stringify(Array.from((await import('yjs')).encodeStateAsUpdate(doc)))===searchBytes);
+ search.editor.commands.insertContentAt(1,'更新した語 ');
+ assert('Body search cache follows live edits',getPageSearchText(search.page.id).includes('更新した語'));
+ const picture='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN9sAAAAASUVORK5CYII=';
+ search.editor.commands.insertContentAt(search.editor.state.doc.content.size,{type:'image',attrs:{src:picture,alt:'図の検索用説明'}});
+ const pictureMarkdown=getPageMarkdown(search.page.id);search.editor.commands.setContent(cleanHTML(pictureMarkdown));
+ assert('Embedded images survive Markdown and Yjs round trips with their description',search.editor.getHTML().includes(picture)&&getPageSearchText(search.page.id).includes('図の検索用説明')&&!getPageSearchText(search.page.id).includes('base64'));
+ search.editor.destroy();
  const palette=make('Palette text');palette.editor.chain().selectAll().setColor('var(--text-sage)').setHighlight({color:'#dbe7d5'}).run();
  const colors=htmlToMarkdown(palette.editor.getHTML());palette.editor.commands.setContent(cleanHTML(colors));
  assert('Palette text and highlight colors survive Markdown round trip',palette.editor.getHTML().includes('var(--text-sage)')&&palette.editor.getHTML().includes('219, 231, 213')&&!palette.editor.getHTML().includes('data-markdown-extra'));
