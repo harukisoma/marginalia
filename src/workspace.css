@@ -77,7 +77,7 @@ main{background:var(--bg);scroll-padding-top:72px}
 .filter-fields,.view-fields{display:flex;gap:12px;align-items:center;min-width:0}
 .leaf-filters label{display:grid;gap:4px;min-width:0}
 .leaf-filters label>span{font-size:12px;font-weight:500;color:var(--muted)}
-.leaf-filters select{font-size:13px;min-height:34px;padding:5px 28px 5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--side);color:var(--ink);max-width:200px}
+.leaf-filters select{font-size:14px;min-height:34px;padding:5px 28px 5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--side);color:var(--ink);max-width:200px}
 .filter-symbol{color:var(--muted);margin-top:20px}
 .active-filters{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:13px;margin:4px 0 16px;color:var(--muted)}
 .active-filters button{font-size:12px;border:1px solid var(--border);background:var(--side);padding:3px 8px;gap:5px;border-radius:6px}
@@ -255,7 +255,7 @@ button.label-badge:hover{filter:brightness(.95)}
  .leaf-create-actions .new-leaf-menu summary{min-height:40px;font-size:14px;padding:8px 12px}
  .leaf-search{min-height:44px}.leaf-search input{font-size:16px}.leaf-search kbd{display:none}
  .leaf-filters{display:grid;gap:12px;margin:16px 0}.filter-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.view-fields{display:none}.view-options-open .view-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.filter-symbol{display:none}
- .leaf-filters label{min-width:0}.leaf-filters select{font-size:14px;min-height:40px;max-width:none;width:100%;padding:7px 24px 7px 10px}.leaf-filters label>span{font-size:12px}
+ .leaf-filters label{min-width:0}.leaf-filters select{font-size:16px;min-height:40px;max-width:none;width:100%;padding:7px 24px 7px 10px}.leaf-filters label>span{font-size:12px}
  .leaf-results-header{padding:8px 12px;gap:8px;min-height:48px}.leaf-display-controls{gap:5px}.leaf-display-controls>button{min-height:32px}.leaf-display-controls>button>span{display:none}
  .leaf-display-controls>.view-options-toggle{display:inline-flex}.view-options-toggle[aria-expanded=true]{background:var(--tint);color:var(--ink)}
  .organized-leaf{padding:14px 12px;gap:9px}.leaf-title-link{font-size:16px}.leaf-row-state{padding-top:4px}.leaf-title-line{gap:7px}
