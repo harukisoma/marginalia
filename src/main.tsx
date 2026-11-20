@@ -364,7 +364,7 @@ function App(){
  }
  async function proposalAction(chat:Chat,index:number,accept:boolean){if(reviewBusy.current)return;const latest=chats.get(chat.id),edit=latest?.edits?.[index];if(!latest||!edit||edit.status)return;if(accept){if(sourceDirty){notify('原文の変更を先に反映してください。');return;}reviewBusy.current=true;try{await checkpoint('AIの変更を採用する前');if(operationRef.current.sourceDirty)throw new Error('原文の変更を先に反映してください。');if(chats.get(chat.id)?.edits?.[index]?.status)return;applyPagePatch(edit.pageId,edit.before,edit.after,activeEditorPage.current===edit.pageId?editor.current:null);}catch(error){notify((error as Error).message);return;}finally{reviewBusy.current=false;}}const current=chats.get(chat.id)!;chats.set(chat.id,{...current,edits:current.edits!.map((e,i)=>i===index?{...e,status:accept?'accepted':'rejected'}:e)});}
  function reviewAction(key:string,accept:boolean){const [id,value]=key.split(':');const chat=chats.get(id);if(chat)void proposalAction(chat,Number(value),accept);}
- function openReview(edit:Proposal,key:string){if(sourceDirty){notify('原文の変更を先に反映してください。');return;}openPage(edit.pageId);setSourceMode(false);setFocusedReview(key);if(window.innerWidth<=820)setAiOpen(false);}
+ function openReview(edit:Proposal,key:string){if(sourceDirty){notify('原文の変更を先に反映してください。');return;}openPage(edit.pageId);setSourceMode(false);setFocusedReview(key);if(window.innerWidth<=1150)setAiOpen(false);}
  const inlineReviews=useMemo<InlineReview[]>(()=>[...chats.values()].flatMap(chat=>(chat.edits||[]).flatMap((edit,index)=>edit.pageId===selected&&!edit.status?[{key:chat.id+':'+index,before:edit.before,after:edit.after,reason:edit.reason}]:[])),[version,selected]);
 
  async function importMarkdown(event:React.ChangeEvent<HTMLInputElement>){
