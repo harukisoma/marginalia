@@ -1,7 +1,7 @@
 import * as Y from 'yjs';
 import {IndexeddbPersistence} from 'y-indexeddb';
 import {NOTEBOOK_DATABASE,BACKUP_FORMAT} from './storage.mjs';
-export type Page={id:string;title:string;kind:'note'|'paper'|'book'|'journal';tags:string[];status:'unread'|'reading'|'done';author:string;url:string;parent:string;created:number;updated:number;deleted?:boolean};
+export type Page={id:string;title:string;kind:'note'|'paper'|'book'|'journal';tags:string[];bookGenres?:string[];paperMajor?:string;paperMiddle?:string;paperMinor?:string;noteTypes?:string[];status:'unread'|'reading'|'done';author:string;url:string;parent:string;created:number;updated:number;deleted?:boolean};
 export const doc=new Y.Doc();
 const pageMap=doc.getMap<Y.Map<unknown>|Page>('pages');
 export const pages={

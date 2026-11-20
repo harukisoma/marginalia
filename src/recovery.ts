@@ -106,7 +106,7 @@ export async function restoreLeafCopy(original:Page,source:Y.Doc){
  return doc.transact(()=>{
   const copy=createPage(original.kind);
   const parent=original.parent?pages.get(original.parent):null;
-  updatePage(copy.id,{title:original.title+'（復元）',tags:[...original.tags],author:original.author,
+  updatePage(copy.id,{...Object.fromEntries(['bookGenres','paperMajor','paperMiddle','paperMinor','noteTypes'].filter(key=>key in original).map(key=>[key,original[key as keyof Page]])),title:original.title+'（復元）',tags:[...original.tags],author:original.author,
    url:original.url,status:original.status,parent:parent&&!parent.deleted?parent.id:'',
    created:Number.isFinite(original.created)?original.created:copy.created});
   copyLeafBody(source,doc,original.id,copy.id);

@@ -300,3 +300,15 @@ button.label-badge:hover{filter:brightness(.95)}
 .spin{animation:voice-spin 1.5s linear infinite}
 @media(max-width:820px){.image-dialog{bottom:var(--image-keyboard-inset,0px);max-height:calc(100dvh - var(--image-keyboard-inset,0px) - env(safe-area-inset-top) - 12px)}.image-dialog input:not([type=file]){font-size:16px;min-height:44px}.image-drop-zone{min-height:160px}.image-actions button{min-height:44px}}
 @media(prefers-reduced-motion:reduce){.spin{animation:none}}
+/* Collection-specific classifications and responsive AI controls. */
+.leaf-classification-fields{display:flex;flex-wrap:wrap;gap:12px 20px;min-width:0;max-width:100%}
+.leaf-classification-fields .property-field{min-width:140px;max-width:100%}
+.legacy-tags{font-size:12px;color:var(--muted);max-width:100%;align-self:flex-start}
+.legacy-tags summary{cursor:pointer;padding:6px 0}.legacy-tags p{max-width:320px;line-height:1.6}.legacy-tags .selected-labels{margin:8px 0}
+.ai-working{flex-wrap:wrap}.ai-working>div{flex:1;min-width:100px}.ai-working .ai-stop{display:flex;align-items:center;gap:5px;background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:6px 9px;color:var(--ink);font-size:12px;min-height:32px}
+.ai-effort{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted);margin:8px 0}.ai-effort select{background:var(--paper);color:var(--ink);border:1px solid var(--border);border-radius:6px;padding:5px;font-size:12px}
+.ai-steer-hint{font-size:12px;line-height:1.6;color:var(--muted);margin:8px 0}.ai-request-state{display:block;margin:8px 0;color:var(--muted)}
+.ai-request-error{font-size:13px;line-height:1.6;border-top:1px solid var(--border);margin-top:10px;padding-top:8px}.ai-request-error button{border:1px solid var(--border);border-radius:6px;padding:6px 12px;background:var(--paper);color:var(--ink)}
+.chat-batch-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:14px;font-size:12px}.chat-batch-actions button,.review-page-bar .primary{border:1px solid var(--border);border-radius:6px;padding:7px 10px;background:var(--accent);color:white;font-size:12px}
+.review-page-bar{flex-wrap:wrap}.review-page-bar>span{flex:1;min-width:160px}
+@media(max-width:820px){.leaf-classification-fields{width:100%}.ai-effort select{font-size:16px}.ai-working .ai-stop{min-height:40px}.review-page-bar button{min-height:40px}.chat-batch-actions button{min-height:40px}}
