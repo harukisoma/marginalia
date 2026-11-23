@@ -20,7 +20,7 @@ begin
  else
   update public.notebooks set state=new_state,revision=revision+1,updated_at=now() where owner=auth.uid() and revision=expected_revision returning revision into next_revision;
  end if;
- if next_revision is null then raise exception 'Concurrent update; merge and retry' using errcode='40001'; end if;
+ if next_revision is null then raise exception 'Concurrent update; merge and retry' using errcode='PT409'; end if;
  return next_revision;
 end;
 $$;

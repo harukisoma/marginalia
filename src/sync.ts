@@ -1,6 +1,7 @@
 import {createClient, type SupabaseClient} from '@supabase/supabase-js';
 import * as Y from 'yjs';
 import {doc} from './data';
+import {boundedSync,syncIssue,syncRetryDelay} from './sync-network.mjs';
 import {inspectNotebookUpdate} from './preservation.mjs';
 
 export type SyncConfig={url:string;key:string};
@@ -20,6 +21,10 @@ export class CloudSync{
  timer?:ReturnType<typeof setInterval>;
  private owner='';
  private dirty=true;
+ private failures=0;
+ private nextAttempt=0;
+ private retryTimer?:ReturnType<typeof setTimeout>;
+ private lifetime=new AbortController();
  private epoch=0;
  private pending?:ReturnType<typeof setTimeout>;
  private channel?:ReturnType<SupabaseClient['channel']>;
@@ -37,20 +42,23 @@ export class CloudSync{
   clearTimeout(this.pending);
   this.pending=setTimeout(this.refresh,350);
  };
- private refresh=()=>void this.flush();
+ private refresh=()=>{if(document.visibilityState!=='hidden')void this.flush(false);};
+ private resume=()=>{if(document.visibilityState!=='hidden')void this.flush();};
  private offline=()=>this.report('offline');
 
  pause(){
   this.epoch++;
+  this.lifetime.abort();this.lifetime=new AbortController();
+  this.failures=0;this.nextAttempt=0;clearTimeout(this.retryTimer);
   this.owner='';
   this.email='';
   this.request?.abort();
   doc.off('update',this.update);
-  window.removeEventListener('online',this.refresh);
+  window.removeEventListener('online',this.resume);
   window.removeEventListener('offline',this.offline);
-  window.removeEventListener('focus',this.refresh);
-  window.removeEventListener('pageshow',this.refresh);
-  document.removeEventListener('visibilitychange',this.refresh);
+  window.removeEventListener('focus',this.resume);
+  window.removeEventListener('pageshow',this.resume);
+  document.removeEventListener('visibilitychange',this.resume);
   clearInterval(this.timer);
   clearTimeout(this.pending);
   this.timer=undefined;
@@ -61,7 +69,8 @@ export class CloudSync{
  async start(){
   if(this.closed)return false;
   const epoch=this.epoch;
-  const {data:{session},error}=await this.client.auth.getSession();
+  let result;try{result=await boundedSync(()=>this.client.auth.getSession(),this.lifetime.signal);}catch(error){if(this.closed||epoch!==this.epoch)return false;throw new Error(syncIssue(error).message);}
+  const {data:{session},error}=result;
   if(this.closed||epoch!==this.epoch)return false;
   if(error)throw error;
   if(!session){this.pause();this.report('local');return false;}
@@ -81,11 +90,11 @@ export class CloudSync{
   localStorage.setItem('marginalia-sync-owner',owner);
   this.owner=owner;
   doc.on('update',this.update);
-  window.addEventListener('online',this.refresh);
+  window.addEventListener('online',this.resume);
   window.addEventListener('offline',this.offline);
-  window.addEventListener('focus',this.refresh);
-  window.addEventListener('pageshow',this.refresh);
-  document.addEventListener('visibilitychange',this.refresh);
+  window.addEventListener('focus',this.resume);
+  window.addEventListener('pageshow',this.resume);
+  document.addEventListener('visibilitychange',this.resume);
   this.timer=setInterval(this.refresh,15000);
   this.channel=this.client.channel('notebook:'+owner+':'+this.epoch)
    .on('postgres_changes',{event:'*',schema:'public',table:'notebooks',filter:'owner=eq.'+owner},this.refresh)
@@ -94,11 +103,13 @@ export class CloudSync{
   return this.owner===owner;
  }
 
- async flush(){
+ async flush(force=true){
   if(this.closed||!this.owner)return;
+  if(!force&&Date.now()<this.nextAttempt)return;
   if(!navigator.onLine){this.offline();return;}
   if(this.flight?.epoch===this.epoch)return this.flight.done;
   const epoch=this.epoch;
+  clearTimeout(this.retryTimer);
   const controller=new AbortController();
   this.request=controller;
   const done=this.exchange(this.owner,controller).finally(()=>{
@@ -112,16 +123,17 @@ export class CloudSync{
   const {signal}=controller;
   this.report('syncing');
   try{
-   const {data:{session},error:authError}=await this.client.auth.getSession();
+   const {data:{session},error:authError}=await boundedSync(()=>this.client.auth.getSession(),signal);
    if(signal.aborted)return;
    if(authError)throw authError;
-   if(!session||session.user.id!==owner)return;
+   if(!session)throw new Error('同期のログインを確認できません。再ログインしてください。');
+   if(session.user.id!==owner)return;
    // Both operations must use the session that owns this notebook, even if a
    // different tab changes the active Supabase session before the request.
    const authorization='Bearer '+session.access_token;
    for(let attempts=0;attempts<8;attempts++){
-    const {data,error}=await this.client.from('notebooks').select('state,revision').eq('owner',owner)
-     .setHeader('Authorization',authorization).abortSignal(AbortSignal.any([signal,AbortSignal.timeout(12000)])).maybeSingle();
+    const {data,error}=await boundedSync(requestSignal=>this.client.from('notebooks').select('state,revision').eq('owner',owner)
+     .setHeader('Authorization',authorization).retry(false).abortSignal(requestSignal).maybeSingle(),signal,45000);
     if(signal.aborted)return;
     if(error)throw error;
     const current=Y.encodeStateAsUpdate(doc);
@@ -142,22 +154,23 @@ export class CloudSync{
      encoded=toBase64(Y.encodeStateAsUpdate(doc));
     }
     this.dirty=false;
-    if(data?.state===encoded){this.report('synced');return;}
-    const saved=await this.client.rpc('save_notebook',{expected_revision:data?.revision??0,new_state:encoded})
-     .setHeader('Authorization',authorization).abortSignal(AbortSignal.any([signal,AbortSignal.timeout(12000)]));
+    if(data?.state===encoded){this.failures=0;this.nextAttempt=0;clearTimeout(this.retryTimer);this.report('synced');return;}
+    const saved=await boundedSync(requestSignal=>this.client.rpc('save_notebook',{expected_revision:data?.revision??0,new_state:encoded})
+     .setHeader('Authorization',authorization).retry(false).abortSignal(requestSignal),signal,45000);
     if(signal.aborted)return;
     if(saved.error){
-     if(saved.error.code==='40001')continue;
+     if(['PT409','40001'].includes(saved.error.code)){await new Promise(resolve=>setTimeout(resolve,100+Math.random()*250));if(signal.aborted)return;continue;}
      throw saved.error;
     }
-    if(!this.dirty){this.report('synced');return;}
+    if(!this.dirty){this.failures=0;this.nextAttempt=0;clearTimeout(this.retryTimer);this.report('synced');return;}
    }
-   throw new Error('同時編集を同期しています。少し待ってから、もう一度お試しください。');
+   throw Object.assign(new Error('同時編集を同期しています。少し待ってから、もう一度お試しください。'),{code:'PT409'});
   }catch(error){
    if(signal.aborted)return;
    if(!navigator.onLine){this.offline();return;}
-   const message=error instanceof Error?error.message:String((error as {message?:string}).message||error);
-   this.report('error',message);
+   const issue=syncIssue(error);
+   this.report('error',issue.message);
+   if(issue.retryable){const delay=syncRetryDelay(++this.failures);this.nextAttempt=Date.now()+delay;clearTimeout(this.retryTimer);this.retryTimer=setTimeout(this.refresh,delay);}
   }
  }
 
